@@ -166,7 +166,7 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
       instructions: validInstructions.map((s) => s.trim()),
     };
 
-    if (!isEditing) {
+    if (!isEditing || user?.role === 'admin') {
       recipe.author = form.author.trim();
     }
 
@@ -230,9 +230,10 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
             </Field>
             <Field label="שם המעלה" required>
               <input
-                className={`${fieldClass} bg-cream text-ink-soft cursor-not-allowed`}
+                className={`${fieldClass} ${isEditing && user?.role !== 'admin' ? 'bg-cream text-ink-soft cursor-not-allowed' : ''}`}
                 value={form.author}
-                disabled
+                onChange={setField('author')}
+                disabled={isEditing && user?.role !== 'admin'}
               />
             </Field>
           </div>

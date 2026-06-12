@@ -53,6 +53,10 @@ Check this before debugging — common issues and their fixes:
 
 - **(2026-06-12) Auto-generated images fail** → Missing `UNSPLASH_ACCESS_KEY` in `.env`. Get free key from https://unsplash.com/developers. Script translates Hebrew names to English for better matches.
 
+- **(2026-06-12) "My Recipes" page shows no recipes after editing** → All recipes must have both `author` (string, display name) AND `authorId` (number, user ID). If recipes.json is missing `authorId` fields, run: `node -e "const fs=require('fs'),p=require('path');const r=JSON.parse(fs.readFileSync(p.join('recipe-app','data','recipes.json'),'utf8')),u=JSON.parse(fs.readFileSync(p.join('recipe-app','data','users.json'),'utf8')),m={};u.forEach(x=>{m[x.username]=x.id});r.forEach(x=>{if(!x.authorId&&x.author)x.authorId=m[x.author]});fs.writeFileSync(p.join('recipe-app','data','recipes.json'),JSON.stringify(r,null,2),'utf8');console.log('Done')"`
+
+- **(2026-06-12) Admin can't change author name when editing** → (1) Frontend AddRecipePage must send author in PUT request (line 169-171): `if (!isEditing || user?.role === 'admin')`. (2) Backend must update both author name AND authorId by looking up the new author in users.json (server/index.js PUT endpoint).
+
 ---
 
 ## Architecture Overview
@@ -71,6 +75,7 @@ Check this before debugging — common issues and their fixes:
 - **Reviews:** Stored in recipe.reviews[]. Average rating recalculated on each change.
 - **AI:** Two endpoints: `/api/ai/search` (Claude ranks recipes by relevance), `/api/ai/chat` (cooking advice in Hebrew).
 - **Auth:** JWT tokens in localStorage, validated on app mount. Users can be `'user'` or `'admin'`.
+- **Author ownership:** Each recipe has `authorId` (user ID) + `author` (display name). "My Recipes" filters by `authorId`. PUT/DELETE check `recipe.authorId === user.id OR user.role === 'admin'`. **Only admins can change author** (changes both name + ID).
 
 ---
 
@@ -83,8 +88,8 @@ Express server ([server/index.js](recipe-app/server/index.js)) provides REST API
 - `POST /api/ai/search`, `POST /api/ai/chat`
 
 **Data files:**
-- [data/recipes.json](recipe-app/data/recipes.json) — canonical recipes (id, name, difficulty, ingredients[], instructions[], image [base64], reviews[], averageRating, authorId)
-- [data/users.json](recipe-app/data/users.json) — canonical users (id, username, email, passwordHash, role)
+- [data/recipes.json](recipe-app/data/recipes.json) — canonical recipes. **Critical fields:** `id`, `authorId` (number, matches user.id), `author` (string, display name), `name`, `difficulty`, `ingredients[]`, `instructions[]`, `reviews[]`, `averageRating`. **Note:** `authorId` is required for "My Recipes" filtering and owner permission checks.
+- [data/users.json](recipe-app/data/users.json) — canonical users (id, username, email, passwordHash, role). **When admin edits recipe author:** look up user by new author username and update both `author` (name) and `authorId` (ID).
 
 **Environment variables:**
 

@@ -480,7 +480,18 @@ app.put('/api/recipes/:id', async (req, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const updatedRecipe = { ...recipes[index], ...req.body, id, authorId: recipe.authorId, author: recipe.author };
+    const updatedRecipe = { ...recipes[index], ...req.body, id, authorId: recipe.authorId };
+    // Only override author if user is not admin (keep it unchanged for non-admins)
+    if (user.role !== 'admin') {
+      updatedRecipe.author = recipe.author;
+    } else if (req.body.author && req.body.author !== recipe.author) {
+      // Admin changed the author name - look up the new author's ID
+      const users = readUsers();
+      const newAuthor = users.find(u => u.username === req.body.author);
+      if (newAuthor) {
+        updatedRecipe.authorId = newAuthor.id;
+      }
+    }
 
     if (!updatedRecipe.image) {
       console.log(`🖼️ No image for "${updatedRecipe.name}", fetching...`);

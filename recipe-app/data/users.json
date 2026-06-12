@@ -22,5 +22,13 @@
     "passwordHash": "$2b$10$iVmtt9sb9yUcGYu94YQ6su1lNik3EJaA7XZPErjECs7ydkXYhPH9a",
     "createdAt": "2026-06-07T14:47:22.565Z",
     "role": "user"
+  },
+  {
+    "id": 4,
+    "username": "גיא",
+    "email": "gia@example.com",
+    "passwordHash": "$2b$10$FarJACzDgSkH1tE2.uNqUuK52/uGfqcQiw2lXlPFT1nM/BOHLv/9e",
+    "createdAt": "2026-06-12T20:44:09.590Z",
+    "role": "user"
   }
 ]
