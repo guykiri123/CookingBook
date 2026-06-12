@@ -117,7 +117,7 @@ export default function HomePage({ onSelectRecipe }) {
       >
         <div className="max-w-3xl mx-auto px-4 py-14 sm:py-20 text-center">
           <h1 className="font-display font-bold text-ink text-4xl sm:text-5xl md:text-6xl leading-tight mb-4 animate-fade-up">
-            מצא את המתכון המושלם שלך
+            🍝 ספר המתכונים שלך
           </h1>
           <p className="text-ink-soft text-lg sm:text-xl mb-8 animate-fade-up" style={{ animationDelay: '0.1s' }}>
             בואו נבשל משהו טעים היום
