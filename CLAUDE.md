@@ -55,7 +55,11 @@ their own dedicated sections below — don't duplicate them here.)
 
 ## Project layout
 
-The actual application lives in the `recipe-app/` subdirectory, not the repo root. Run all commands from `recipe-app/`:
+The actual application lives in the `recipe-app/` subdirectory, not the repo root. Run all commands from `recipe-app/`.
+
+**Documentation:** See [README.md](README.md) for user-facing guides and getting started instructions. This CLAUDE.md focuses on architecture and developer workflows.
+
+**Repository:** https://github.com/guykiri123/CookingBook
 
 ```bash
 cd recipe-app
