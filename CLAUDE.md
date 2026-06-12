@@ -19,7 +19,8 @@ node sync-from-mongo.js --watch # Auto-sync every 30s (recommended for developme
 
 **Requirements:** Node.js 20+, `ANTHROPIC_API_KEY` + `MONGODB_URI` in `.env`  
 **Live:** https://cookingbook-bf50.onrender.com  
-**Preferences:** [@CLAUDE.local.md](CLAUDE.local.md)
+**Preferences:** [@CLAUDE.local.md](CLAUDE.local.md)  
+**No test suite:** there is no test framework or `test` script — verify changes by running the app (`npm run dev`), not by running tests.
 
 ---
 
@@ -41,7 +42,7 @@ Check this before debugging — common issues and their fixes:
 
 - **(2026-05-28) "App doesn't work" / blank page** → Orphaned Vite servers on ports 5173–5176. Kill with `taskkill //F //IM node.exe`, then restart `npm run dev`.
 
-- **(2026-06-07) API calls fail / recipes don't persist** → Express path incorrect in [server/index.js](recipe-app/server/index.js) line 16: must be `join(__dirname, '..', 'data', 'recipes.json')` (one level up).
+- **(2026-06-07) API calls fail / recipes don't persist** *(pre-MongoDB — historical; persistence is now MongoDB, this file-path fix no longer applies)* → Express path incorrect in [server/index.js](recipe-app/server/index.js) line 16: must be `join(__dirname, '..', 'data', 'recipes.json')` (one level up).
 
 - **(2026-06-07) "PayloadTooLargeError"** → Express body parser limit too small. Set `{ limit: '50mb' }` in [server/index.js](recipe-app/server/index.js) lines 29–30.
 
@@ -118,6 +119,8 @@ Check this before debugging — common issues and their fixes:
 **Local JSON files (backup only):**
 - [data/recipes.json](recipe-app/data/recipes.json) — synced from MongoDB, **NOT** source of truth
 - [data/users.json](recipe-app/data/users.json) — synced from MongoDB, **NOT** source of truth
+
+> **Path gotcha:** the two sync paths differ. `sync-from-mongo.js` (run from `recipe-app/`) writes the canonical `recipe-app/data/*.json` that the rest of the app references. The server's in-request `syncToJSON()` resolves `__dirname` to `recipe-app/server/`, so it targets `recipe-app/server/data/` — a directory that doesn't exist, so those writes fail silently (caught by its try/catch). Treat `sync-from-mongo.js --watch` as the reliable way to refresh local backups, not the server's per-request sync.
 
 **Environment variables:**
 

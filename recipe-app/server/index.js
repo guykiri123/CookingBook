@@ -4,6 +4,7 @@ import cors from 'cors';
 import mongoose from 'mongoose';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 import Anthropic from '@anthropic-ai/sdk';
 import bcryptjs from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -120,6 +121,24 @@ const requireAuth = (req, res) => {
   return user;
 };
 
+// Sync MongoDB to JSON files (real-time backup)
+const syncToJSON = async () => {
+  try {
+    const users = await User.find({}).lean();
+    const recipes = await Recipe.find({}).lean();
+
+    const usersPath = join(__dirname, 'data/users.json');
+    const recipesPath = join(__dirname, 'data/recipes.json');
+
+    fs.writeFileSync(usersPath, JSON.stringify(users, null, 2), 'utf8');
+    fs.writeFileSync(recipesPath, JSON.stringify(recipes, null, 2), 'utf8');
+
+    console.log('💾 Synced to JSON files');
+  } catch (err) {
+    console.error('❌ Sync error:', err.message);
+  }
+};
+
 const fetchRecipeImage = async (recipeName) => {
   try {
     const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
@@ -211,6 +230,7 @@ app.post('/api/auth/register', async (req, res) => {
     });
 
     await newUser.save();
+    await syncToJSON();
 
     const token = jwt.sign(
       { id: newUser.id, username: newUser.username, email: newUser.email, role: newUser.role },
@@ -335,6 +355,7 @@ app.post('/api/admin/users', async (req, res) => {
     });
 
     await newUser.save();
+    await syncToJSON();
 
     res.status(201).json({
       id: newUser.id,
@@ -395,6 +416,7 @@ app.put('/api/admin/users/:id', async (req, res) => {
     }
 
     await targetUser.save();
+    await syncToJSON();
 
     res.json({
       id: targetUser.id,
@@ -425,6 +447,7 @@ app.delete('/api/admin/users/:id', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    await syncToJSON();
     res.json({ message: 'User deleted' });
   } catch (err) {
     console.error('Delete user error:', err);
@@ -467,6 +490,7 @@ app.post('/api/recipes', async (req, res) => {
     }
 
     await newRecipe.save();
+    await syncToJSON();
     res.status(201).json(newRecipe);
   } catch (err) {
     console.error('Error adding recipe:', err);
@@ -510,6 +534,7 @@ app.put('/api/recipes/:id', async (req, res) => {
 
     Object.assign(recipe, updatedData);
     await recipe.save();
+    await syncToJSON();
     res.json(recipe);
   } catch (err) {
     console.error('Error updating recipe:', err);
@@ -534,6 +559,7 @@ app.delete('/api/recipes/:id', async (req, res) => {
     }
 
     await Recipe.deleteOne({ id });
+    await syncToJSON();
     res.json({ message: 'Recipe deleted' });
   } catch (err) {
     console.error('Error deleting recipe:', err);
@@ -573,6 +599,7 @@ app.post('/api/recipes/:id/reviews', async (req, res) => {
     recipe.averageRating = calculateAverageRating(recipe.reviews);
 
     await recipe.save();
+    await syncToJSON();
     res.status(201).json(newReview);
   } catch (err) {
     console.error('Error adding review:', err);
@@ -599,6 +626,7 @@ app.delete('/api/recipes/:id/reviews/:reviewId', async (req, res) => {
     recipe.averageRating = calculateAverageRating(recipe.reviews);
 
     await recipe.save();
+    await syncToJSON();
     res.json({ message: 'Review deleted' });
   } catch (err) {
     console.error('Error deleting review:', err);

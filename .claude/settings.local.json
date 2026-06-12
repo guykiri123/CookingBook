@@ -10,7 +10,10 @@
       "Bash(py:*)",
       "PowerShell(python:*)",
       "PowerShell(python3:*)",
-      "PowerShell(py:*)"
+      "PowerShell(py:*)",
+      "Bash(node sync-from-mongo.js)",
+      "Bash(cd /d \"C:\\\\Users\\\\guy\\\\Desktop\\\\cooking book\\\\recipe-app\")",
+      "Bash(node sync-from-mongo.js --watch)"
     ]
   },
   "enabledMcpjsonServers": [

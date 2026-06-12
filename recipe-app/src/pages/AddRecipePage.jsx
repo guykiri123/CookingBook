@@ -8,11 +8,14 @@ import { DIETARY_TAGS } from '../data/dietaryTags';
 const DIFFICULTIES = ['קל', 'בינוני', 'קשה'];
 const DIET_TYPES = ['בשרי', 'חלבי', 'פרווה', 'דגים'];
 const PREP_TIMES = ['פחות מ-30', '30-60', 'יותר משעה'];
+const UNITS = ['גרם', 'קילוגרם', 'כוס', 'כפיים', 'כף', 'שיניים', 'מיכל', 'חפיסה', 'יחידה', 'לטעם'];
 
 const emptyIngredient = () => ({ name: '', amount: '', unit: '' });
 
 const fieldClass =
   'w-full bg-white text-ink rounded-lg border-2 border-accent/60 px-4 py-3 focus:border-primary focus:outline-none transition-colors';
+const ingredientFieldClass =
+  'bg-white text-ink text-sm rounded-lg border-2 border-accent/60 px-3 py-2 focus:border-primary focus:outline-none transition-colors';
 const labelClass = 'block text-sm font-medium text-ink mb-1.5';
 
 function Field({ label, required, children, hint }) {
@@ -58,7 +61,6 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
     difficulty: existing?.difficulty ?? 'קל',
     dietType: existing?.dietType ?? 'פרווה',
     prepTime: existing?.prepTime ?? 'פחות מ-30',
-    cookTime: existing?.cookTime ?? '',
     servings: existing?.servings ?? 4,
     tips: existing?.tips ?? '',
   }));
@@ -79,11 +81,6 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
   const [imageError, setImageError] = useState('');
   const [errors, setErrors] = useState([]);
 
-  useEffect(() => {
-    if (!isEditing && user?.username && !form.author) {
-      setForm((p) => ({ ...p, author: user.username }));
-    }
-  }, [user, isEditing]);
 
   const setField = (key) => (e) => setForm((p) => ({ ...p, [key]: e.target.value }));
 
@@ -123,8 +120,6 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
     if (!form.name.trim()) errs.push('יש להזין שם מתכון');
     if (!form.description.trim()) errs.push('יש להזין תיאור קצר');
     if (!form.cuisine.trim()) errs.push('יש להזין סוג מטבח');
-    if (!String(form.cookTime).trim() || Number(form.cookTime) <= 0)
-      errs.push('יש להזין זמן בישול (בדקות)');
     if (Number(form.servings) <= 0) errs.push('מספר הסועדים חייב להיות גדול מ-0');
 
     const validIngredients = ingredients.filter((i) => i.name.trim());
@@ -153,7 +148,7 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
       difficulty: form.difficulty,
       dietType: form.dietType,
       prepTime: form.prepTime,
-      cookTime: Number(form.cookTime),
+      cookTime: existing?.cookTime ?? 15,
       servings: Number(form.servings),
       tips: form.tips.trim(),
       tags,
@@ -166,7 +161,7 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
       instructions: validInstructions.map((s) => s.trim()),
     };
 
-    if (!isEditing || user?.role === 'admin') {
+    if (user?.role === 'admin') {
       recipe.author = form.author.trim();
     }
 
@@ -228,14 +223,15 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
             <Field label="שם המתכון" required>
               <input className={fieldClass} value={form.name} onChange={setField('name')} />
             </Field>
-            <Field label="שם המעלה" required>
-              <input
-                className={`${fieldClass} ${isEditing && user?.role !== 'admin' ? 'bg-cream text-ink-soft cursor-not-allowed' : ''}`}
-                value={form.author}
-                onChange={setField('author')}
-                disabled={isEditing && user?.role !== 'admin'}
-              />
-            </Field>
+            {user?.role === 'admin' && (
+              <Field label="שם המעלה" hint="רק אדמינים יכולים לשנות זאת">
+                <input
+                  className={fieldClass}
+                  value={form.author}
+                  onChange={setField('author')}
+                />
+              </Field>
+            )}
           </div>
 
           <Field label="תיאור קצר" required>
@@ -302,15 +298,6 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
                 ))}
               </select>
             </Field>
-            <Field label="זמן בישול (דקות)" required>
-              <input
-                type="number"
-                min="1"
-                className={fieldClass}
-                value={form.cookTime}
-                onChange={setField('cookTime')}
-              />
-            </Field>
             <Field label="מספר סועדים (בסיס)" required hint="הכמויות יתאימו אוטומטית למספר זה">
               <input
                 type="number"
@@ -361,12 +348,15 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
           <p className="text-xs text-ink-soft mb-4">
             עבור רכיב "לפי הטעם" — הזינו <span className="font-semibold">לטעם</span> בשדה היחידה (הכמות לא תוצג).
           </p>
-          <div className="space-y-3">
+          <div className="space-y-2">
             {ingredients.map((ing, idx) => (
-              <div key={idx} className="flex gap-2 items-start">
+              <div key={idx} className="flex gap-2 items-center">
+                <div className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded border-2 border-accent/40 bg-primary/10 font-bold text-primary text-xs">
+                  {idx + 1}
+                </div>
                 <input
-                  className={`${fieldClass} flex-1`}
-                  placeholder="שם הרכיב"
+                  className={`${ingredientFieldClass} flex-1`}
+                  placeholder="שם המרכיב"
                   value={ing.name}
                   onChange={(e) => updateIngredient(idx, 'name', e.target.value)}
                 />
@@ -374,22 +364,26 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
                   type="number"
                   min="0"
                   step="any"
-                  className={`${fieldClass} w-24`}
+                  className={`${ingredientFieldClass} w-24 flex-shrink-0`}
                   placeholder="כמות"
                   value={ing.amount}
                   onChange={(e) => updateIngredient(idx, 'amount', e.target.value)}
                 />
-                <input
-                  className={`${fieldClass} w-28`}
-                  placeholder="יחידה"
+                <select
+                  className={`${ingredientFieldClass} select-rtl w-24 pl-7 cursor-pointer flex-shrink-0`}
                   value={ing.unit}
                   onChange={(e) => updateIngredient(idx, 'unit', e.target.value)}
-                />
+                >
+                  <option value="" disabled>יחידה</option>
+                  {UNITS.map((u) => (
+                    <option key={u} value={u}>{u}</option>
+                  ))}
+                </select>
                 <button
                   type="button"
                   onClick={() => removeIngredient(idx)}
                   disabled={ingredients.length === 1}
-                  className="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-lg border-2 border-accent/40 text-ink-soft hover:bg-cream disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded border border-accent/40 text-ink-soft text-sm hover:bg-cream disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                   aria-label="הסר רכיב"
                 >
                   ✕
