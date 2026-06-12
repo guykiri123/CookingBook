@@ -1,0 +1,16 @@
+{
+  "name": "cooking-book",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": "18.x"
+  },
+  "scripts": {
+    "dev": "cd recipe-app && npm run dev",
+    "build": "cd recipe-app && npm run build",
+    "start": "cd recipe-app && npm start",
+    "preview": "cd recipe-app && npm run preview",
+    "lint": "cd recipe-app && npm run lint"
+  }
+}

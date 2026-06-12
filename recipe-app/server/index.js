@@ -97,6 +97,63 @@ const verifyToken = (req) => {
   }
 };
 
+const fetchRecipeImage = async (recipeName) => {
+  try {
+    const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
+    if (!UNSPLASH_ACCESS_KEY) {
+      console.warn('⚠️ UNSPLASH_ACCESS_KEY not set, skipping image fetch');
+      return null;
+    }
+
+    let searchQuery = recipeName;
+
+    // If recipe name is in Hebrew, translate to English first for better Unsplash results
+    if (/[֐-׿]/.test(recipeName)) {
+      try {
+        const translation = await anthropic.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 50,
+          messages: [
+            {
+              role: 'user',
+              content: `תרגם את שם המנה הזה לאנגלית בקצרה (רק את השם, בלי הסברים): "${recipeName}"`,
+            },
+          ],
+        });
+        const translatedName = translation.content[0].type === 'text' ? translation.content[0].text.trim() : recipeName;
+        searchQuery = translatedName;
+        console.log(`🔄 Translated "${recipeName}" → "${searchQuery}"`);
+      } catch (err) {
+        console.warn(`Could not translate recipe name, using Hebrew: ${err.message}`);
+      }
+    }
+
+    const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(searchQuery)}&per_page=1&client_id=${UNSPLASH_ACCESS_KEY}`;
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (!data.results || data.results.length === 0) {
+      console.warn(`No image found for: "${recipeName}" (searched: "${searchQuery}")`);
+      return null;
+    }
+
+    const imageUrl = data.results[0].urls.regular;
+    console.log(`📷 Fetching image for "${recipeName}" from Unsplash...`);
+
+    const imageResponse = await fetch(imageUrl);
+    const arrayBuffer = await imageResponse.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const base64 = buffer.toString('base64');
+    const mimeType = imageResponse.headers.get('content-type') || 'image/jpeg';
+
+    return `data:${mimeType};base64,${base64}`;
+  } catch (err) {
+    console.error(`Error fetching image for "${recipeName}":`, err.message);
+    return null;
+  }
+};
+
 const requireAuth = (req, res) => {
   const user = verifyToken(req);
   if (!user) {
@@ -376,7 +433,7 @@ app.get('/api/recipes', (req, res) => {
   res.json(recipes);
 });
 
-app.post('/api/recipes', (req, res) => {
+app.post('/api/recipes', async (req, res) => {
   try {
     const user = requireAuth(req, res);
     if (!user) return;
@@ -388,6 +445,15 @@ app.post('/api/recipes', (req, res) => {
       authorId: user.id,
       createdAt: new Date().toISOString(),
     };
+
+    if (!newRecipe.image) {
+      console.log(`🖼️ No image for "${newRecipe.name}", fetching...`);
+      const image = await fetchRecipeImage(newRecipe.name);
+      if (image) {
+        newRecipe.image = image;
+      }
+    }
+
     recipes.push(newRecipe);
     writeRecipes(recipes);
     res.status(201).json(newRecipe);
@@ -396,7 +462,7 @@ app.post('/api/recipes', (req, res) => {
   }
 });
 
-app.put('/api/recipes/:id', (req, res) => {
+app.put('/api/recipes/:id', async (req, res) => {
   try {
     const user = requireAuth(req, res);
     if (!user) return;
@@ -414,7 +480,17 @@ app.put('/api/recipes/:id', (req, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    recipes[index] = { ...recipes[index], ...req.body, id, authorId: recipe.authorId, author: recipe.author };
+    const updatedRecipe = { ...recipes[index], ...req.body, id, authorId: recipe.authorId, author: recipe.author };
+
+    if (!updatedRecipe.image) {
+      console.log(`🖼️ No image for "${updatedRecipe.name}", fetching...`);
+      const image = await fetchRecipeImage(updatedRecipe.name);
+      if (image) {
+        updatedRecipe.image = image;
+      }
+    }
+
+    recipes[index] = updatedRecipe;
     writeRecipes(recipes);
     res.json(recipes[index]);
   } catch (err) {

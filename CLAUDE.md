@@ -53,6 +53,14 @@ their own dedicated sections below — don't duplicate them here.)
   Cause: `<main>` was re-rendering on `currentPage` change without animation support. Missing keyframe and CSS class definitions.
   Solution: (1) Added `@keyframes page-enter` to `src/index.css`: opacity 0→1 + translateY(14px)→0 over 0.35s. (2) Added `key={currentPage}` to `<main>` in App.jsx + class `animate-page-enter` so React re-mounts and triggers the animation. (3) Shortened `animate-fade-up` from 0.6s to 0.5s for snappier feel.
 
+- **(2026-06-12) Image auto-generation fails / "No image found for recipe X" / `imageResponse.buffer is not a function`**
+  Cause: (1) Missing or invalid `UNSPLASH_ACCESS_KEY` in `.env`; (2) Hebrew recipe names don't match Unsplash search results; (3) Using deprecated `buffer()` method with Node.js built-in fetch (use `arrayBuffer()` instead).
+  Solution: (1) Get free Unsplash key from https://unsplash.com/developers and add to `.env`: `UNSPLASH_ACCESS_KEY=...`. (2) For recipes with no Hebrew match, script gracefully skips them with a warning (not an error). Claude automatically translates Hebrew recipe names to English before searching Unsplash for better results. (3) Use `await imageResponse.arrayBuffer()` then `Buffer.from(arrayBuffer)` for built-in fetch API.
+
+- **(2026-06-12) Auto-generated images are off-topic (e.g., wrong dish)**
+  Cause: Unsplash search returned irrelevant image for the recipe name, even after English translation.
+  Solution: (1) Manually source image from external website (e.g., food blog, recipe site). (2) Download image, convert to base64, and embed in recipes.json via Node.js: `curl IMAGE_URL | base64 | tr -d '\n'`, then update recipe object with `"image": "data:image/jpeg;base64,..."`. (3) Or use the CLI workflow below.
+
 ## Project layout
 
 The actual application lives in the `recipe-app/` subdirectory, not the repo root. Run all commands from `recipe-app/`.
@@ -141,8 +149,8 @@ The app uses React Context API for global state:
 | Method | Endpoint | Behavior |
 |--------|----------|----------|
 | GET | `/api/recipes` | Returns all recipes from [recipe-app/data/recipes.json](recipe-app/data/recipes.json) |
-| POST | `/api/recipes` | Adds a new recipe, auto-assigns `id`, sets `authorId` from token, writes to disk |
-| PUT | `/api/recipes/:id` | Updates recipe by `id` (only author or admin), writes to disk |
+| POST | `/api/recipes` | Adds a new recipe, auto-assigns `id`, sets `authorId` from token. If no `image` provided, fetches one from Unsplash via recipe name, then writes to disk |
+| PUT | `/api/recipes/:id` | Updates recipe by `id` (only author or admin). If no `image` in request and recipe has no image, fetches one from Unsplash, then writes to disk |
 | DELETE | `/api/recipes/:id` | Deletes recipe by `id` (only author or admin), writes to disk |
 | POST | `/api/recipes/:id/reviews` | Adds a review to recipe `:id` (calculates average rating), writes to disk |
 | DELETE | `/api/recipes/:id/reviews/:reviewId` | Deletes review from recipe `:id`, updates average rating |
@@ -165,6 +173,7 @@ The app uses React Context API for global state:
 
 **Environment Setup:** The server requires:
 - `ANTHROPIC_API_KEY` in `recipe-app/.env` — required for `/api/ai/*` endpoints. If missing or invalid, AI calls fail with 500 errors.
+- `UNSPLASH_ACCESS_KEY` in `recipe-app/.env` — required for auto-generating recipe images via `/api/recipes` POST/PUT. Get a free key at https://unsplash.com/developers. If missing, image generation is skipped with a warning.
 - `JWT_SECRET` in `recipe-app/.env` — used to sign/verify authentication tokens. Defaults to `'your-secret-key-change-in-production'` if not set (dev only; must be changed for production).
 The `.env` file is in `.gitignore` and must never be committed.
 
@@ -228,6 +237,67 @@ A 2026-06-01 security review (pre-backend) found no XSS, secret-exposure, or dep
 2. Regenerate the JSON export: `node -e "import recipes from './src/data/recipes.js'; import fs from 'fs'; fs.writeFileSync('./data/recipes.json', JSON.stringify(recipes, null, 2), 'utf-8');"`
 3. Restart `npm run dev` so the server reloads `recipes.json`
 4. Verify changes in the browser (hard refresh if needed)
+
+**Image sourcing strategy:**
+
+The app uses three approaches to populate recipe images, in order of preference:
+
+1. **User upload** (future feature): user provides image when creating/editing recipe
+2. **Auto-generation from Unsplash:** when a recipe has no image, Express server auto-fetches from Unsplash
+3. **Manual sourcing:** for recipes where Unsplash results are inaccurate, manually fetch from external sources (food blogs, recipe sites)
+
+**Auto-generating recipe images (Unsplash integration):**
+When a user creates or edits a recipe without an image, the Express server automatically fetches one from Unsplash and stores it as base64. This is built into the `/api/recipes` POST and PUT endpoints via the `fetchRecipeImage()` helper in [recipe-app/server/index.js](recipe-app/server/index.js).
+
+**Setup:**
+1. Get a free Unsplash API key from https://unsplash.com/developers → create app → copy Access Key
+2. Add to `recipe-app/.env`: `UNSPLASH_ACCESS_KEY=your-key-here`
+3. Restart `npm run dev` (server must reload the env var)
+
+**Backfilling existing recipes with Unsplash images:**
+```bash
+cd recipe-app
+node scripts/update-recipe-images.js
+```
+This script ([recipe-app/scripts/update-recipe-images.js](recipe-app/scripts/update-recipe-images.js)):
+- Iterates recipes that don't have an `image` field
+- Translates Hebrew recipe names to English (via Claude API) for better Unsplash matches
+- Searches Unsplash and downloads matching images
+- Converts images to base64 data URIs
+- Saves updated recipes to `data/recipes.json`
+- 1-second delay between requests prevents rate-limiting
+
+**Manually sourcing images from external URLs:**
+If an auto-generated image is off-topic or a recipe has no Unsplash match:
+```bash
+cd recipe-app
+node << 'EOF'
+import fs from 'fs';
+
+// Download image and convert to base64
+const imageUrl = 'https://example.com/image.jpg';
+const imageResponse = await fetch(imageUrl);
+const arrayBuffer = await imageResponse.arrayBuffer();
+const base64 = Buffer.from(arrayBuffer).toString('base64');
+const mimeType = imageResponse.headers.get('content-type') || 'image/jpeg';
+const dataUri = `data:${mimeType};base64,${base64}`;
+
+// Update recipe (find by name or ID)
+const recipes = JSON.parse(fs.readFileSync('./data/recipes.json', 'utf-8'));
+const recipe = recipes.find(r => r.id === 13); // or r.name.includes('ניוקי')
+if (recipe) {
+  recipe.image = dataUri;
+  fs.writeFileSync('./data/recipes.json', JSON.stringify(recipes, null, 2), 'utf-8');
+  console.log(`✅ Updated: "${recipe.name}"`);
+}
+EOF
+```
+
+**Gotchas:**
+- Hebrew recipe names may not have Unsplash matches even after translation (skipped with a warning — not an error)
+- Images are embedded as base64, increasing `recipes.json` file size (~50–500KB per image)
+- If Unsplash key is missing/invalid, auto-gen is skipped with a warning; recipe creation still works
+- External image URLs may have CORS restrictions or require User-Agent headers (curl handles this, but raw fetch may fail)
 
 **Adding a new component or page:**
 - Functional components with React hooks; prefer `useState` and context hooks over external state libraries.
