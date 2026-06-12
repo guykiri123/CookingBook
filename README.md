@@ -116,6 +116,55 @@ npm run lint     # Run ESLint
 
 ---
 
+## 🔄 סינכרון נתונים בין Local & MongoDB
+
+**הבעיה:** כשאתה משנה מתכונים או מוסיף ביקורות באתר Live (Render), השינויים נשמרים ב-MongoDB אבל לא בקבצים המקומיים (`recipes.json`, `users.json`).
+
+**הפתרון:** השתמש ב-sync script להוריד את הנתונים מ-MongoDB חזרה לקבצים המקומיים.
+
+### סינכרון חד-פעמי
+
+```bash
+cd recipe-app
+node sync-from-mongo.js
+```
+
+**תוצאה:** 
+```
+✅ 14:30:45 - Synced 4 users, 21 recipes
+```
+
+### סינכרון אוטומטי (המומלץ!)
+
+```bash
+cd recipe-app
+node sync-from-mongo.js --watch
+```
+
+**זה יעשה:**
+- 🔄 סינכרון כל 30 שניות
+- ♾️ ללא הפסק (עד שתסגור את הטרמינל)
+- 📝 `recipes.json` ו-`users.json` יתעדכנו אוטומטית
+
+### Workflow מומלץ
+
+```bash
+# טרמינל 1 - Development
+cd recipe-app
+npm run dev
+
+# טרמינל 2 - Sync אוטומטי (עזוב פתוח לכל הזמן!)
+cd recipe-app
+node sync-from-mongo.js --watch
+```
+
+**עכשיו:**
+1. ערוך מתכונים / הוסף ביקורות באתר Live
+2. בתוך 30 שניות, הקבצים המקומיים יתעדכנו
+3. Commit & push ל-GitHub לתיעוד
+
+---
+
 ## ⚙️ Configuration
 
 ### `.env` פרמטרים
