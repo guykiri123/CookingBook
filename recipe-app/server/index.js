@@ -12,7 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = join(__filename, '..');
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 const RECIPES_FILE = join(__dirname, '..', 'data', 'recipes.json');
 const USERS_FILE = join(__dirname, '..', 'data', 'users.json');
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
@@ -28,6 +28,10 @@ console.log('RECIPES_FILE:', RECIPES_FILE);
 app.use(cors());
 app.use(express.json({ limit: '50mb', charset: 'utf8' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true, charset: 'utf8' }));
+
+// Serve static files from dist/ for production
+const distPath = join(__dirname, '..', 'dist');
+app.use(express.static(distPath));
 
 // Ensure UTF-8 responses
 app.use((req, res, next) => {
@@ -579,6 +583,11 @@ app.post('/api/ai/chat', async (req, res) => {
     console.error('AI chat error:', err);
     res.status(500).json({ error: 'Failed to chat' });
   }
+});
+
+// SPA fallback: serve index.html for client-side routing
+app.get('*', (req, res) => {
+  res.sendFile(join(distPath, 'index.html'));
 });
 
 app.listen(PORT, () => {
