@@ -2,9 +2,24 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Personal preferences
+## Quick Reference
 
-@CLAUDE.local.md
+**All commands run from `recipe-app/` directory:**
+
+```bash
+npm install          # Install dependencies
+npm run dev          # Start dev server (Vite + Express)
+npm run build        # Production build to dist/
+npm run start        # Start production server
+npm run lint         # Run ESLint
+npm run preview      # Serve production build locally
+```
+
+**Node.js version:** 20+ required (Vite 8 incompatible with Node 18). Check with `node --version`.
+
+**Live deployment:** https://cookingbook-bf50.onrender.com
+
+**Personal preferences:** See [@CLAUDE.local.md](CLAUDE.local.md)
 
 ## Solved problems log
 
@@ -171,11 +186,15 @@ The app uses React Context API for global state:
 | POST | `/api/ai/search` | Takes `{query, recipes[]}`, returns `{ids: []}` sorted by relevance (uses Claude API) |
 | POST | `/api/ai/chat` | Takes `{message, history[], recipe{}}`, returns `{reply}` in Hebrew (uses Claude API) |
 
-**Environment Setup:** The server requires:
-- `ANTHROPIC_API_KEY` in `recipe-app/.env` — required for `/api/ai/*` endpoints. If missing or invalid, AI calls fail with 500 errors.
-- `UNSPLASH_ACCESS_KEY` in `recipe-app/.env` — required for auto-generating recipe images via `/api/recipes` POST/PUT. Get a free key at https://unsplash.com/developers. If missing, image generation is skipped with a warning.
-- `JWT_SECRET` in `recipe-app/.env` — used to sign/verify authentication tokens. Defaults to `'your-secret-key-change-in-production'` if not set (dev only; must be changed for production).
-The `.env` file is in `.gitignore` and must never be committed.
+**Environment Setup:** Create `recipe-app/.env` with:
+
+| Variable | Required? | Purpose | Source |
+|----------|-----------|---------|--------|
+| `ANTHROPIC_API_KEY` | ✅ Yes | AI search & chat features | https://console.anthropic.com (free tier available) |
+| `UNSPLASH_ACCESS_KEY` | ⚠️ Optional | Auto-generate recipe images | https://unsplash.com/developers (free tier) |
+| `JWT_SECRET` | ❌ No | Auth token signing | Default: `'your-secret-key-change-in-production'` (dev only) |
+
+**Note:** `.env` is in `.gitignore` — never commit API keys.
 
 **Data Files:**
 - [recipe-app/data/recipes.json](recipe-app/data/recipes.json) — canonical recipe store. Each recipe has: `id, name, description, difficulty, cuisine, dietType, prepTime, servings, ingredients[], instructions[], createdAt, author, authorId, reviews[], averageRating, image (optional)`. Every CRUD operation writes back synchronously. If the server crashes, recipes are never lost.
