@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { readFileSync, writeFileSync } from 'fs';
+import mongoose from 'mongoose';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import Anthropic from '@anthropic-ai/sdk';
@@ -13,17 +13,72 @@ const __dirname = join(__filename, '..');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const RECIPES_FILE = join(__dirname, '..', 'data', 'recipes.json');
-const USERS_FILE = join(__dirname, '..', 'data', 'users.json');
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const MONGODB_URI = process.env.MONGODB_URI;
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+// MongoDB Schemas
+const userSchema = new mongoose.Schema({
+  id: Number,
+  username: { type: String, required: true, unique: true },
+  email: { type: String, required: true, unique: true },
+  passwordHash: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now },
+  role: { type: String, enum: ['user', 'admin'], default: 'user' }
+});
+
+const reviewSchema = new mongoose.Schema({
+  id: String,
+  author: String,
+  rating: Number,
+  text: String,
+  createdAt: Date
+});
+
+const recipeSchema = new mongoose.Schema({
+  id: Number,
+  name: String,
+  description: String,
+  difficulty: String,
+  cuisine: String,
+  dietType: String,
+  prepTime: String,
+  servings: Number,
+  cookTime: Number,
+  tips: String,
+  image: String,
+  author: String,
+  authorId: Number,
+  createdAt: Date,
+  averageRating: { type: Number, default: 0 },
+  ingredients: [{
+    name: String,
+    amount: Number,
+    unit: String
+  }],
+  instructions: [String],
+  reviews: [reviewSchema]
+});
+
+const User = mongoose.model('User', userSchema);
+const Recipe = mongoose.model('Recipe', recipeSchema);
+
+// Connect to MongoDB
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+}).then(() => {
+  console.log('✅ Connected to MongoDB');
+}).catch(err => {
+  console.error('❌ MongoDB connection error:', err.message);
+});
+
 console.log('🔍 Server path info:');
 console.log('__dirname:', __dirname);
-console.log('RECIPES_FILE:', RECIPES_FILE);
+console.log('MONGODB_URI:', MONGODB_URI ? '✅ Set' : '❌ Missing');
 
 app.use(cors());
 app.use(express.json({ limit: '50mb', charset: 'utf8' }));
@@ -39,48 +94,10 @@ app.use((req, res, next) => {
   next();
 });
 
-const readRecipes = () => {
-  try {
-    const data = readFileSync(RECIPES_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (err) {
-    console.error('Error reading recipes:', err);
-    return [];
-  }
-};
-
-const writeRecipes = (recipes) => {
-  try {
-    writeFileSync(RECIPES_FILE, JSON.stringify(recipes, null, 2), 'utf8');
-  } catch (err) {
-    console.error('Error writing recipes:', err);
-    throw err;
-  }
-};
-
 const calculateAverageRating = (reviews) => {
   if (!reviews || reviews.length === 0) return 0;
   const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
   return Math.round((sum / reviews.length) * 10) / 10;
-};
-
-const readUsers = () => {
-  try {
-    const data = readFileSync(USERS_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (err) {
-    console.error('Error reading users:', err);
-    return [];
-  }
-};
-
-const writeUsers = (users) => {
-  try {
-    writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
-  } catch (err) {
-    console.error('Error writing users:', err);
-    throw err;
-  }
 };
 
 const verifyToken = (req) => {
@@ -97,6 +114,15 @@ const verifyToken = (req) => {
   }
 };
 
+const requireAuth = (req, res) => {
+  const user = verifyToken(req);
+  if (!user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return null;
+  }
+  return user;
+};
+
 const fetchRecipeImage = async (recipeName) => {
   try {
     const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
@@ -107,7 +133,6 @@ const fetchRecipeImage = async (recipeName) => {
 
     let searchQuery = recipeName;
 
-    // If recipe name is in Hebrew, translate to English first for better Unsplash results
     if (/[֐-׿]/.test(recipeName)) {
       try {
         const translation = await anthropic.messages.create({
@@ -154,15 +179,7 @@ const fetchRecipeImage = async (recipeName) => {
   }
 };
 
-const requireAuth = (req, res) => {
-  const user = verifyToken(req);
-  if (!user) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return null;
-  }
-  return user;
-};
-
+// Auth endpoints
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { username, email, password, confirmPassword } = req.body;
@@ -179,26 +196,24 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: 'הסיסמה חייבת להיות לפחות 6 תווים' });
     }
 
-    const users = readUsers();
-    if (users.some(u => u.username === username)) {
-      return res.status(400).json({ error: 'שם משתמש זה כבר קיים' });
-    }
-    if (users.some(u => u.email === email)) {
-      return res.status(400).json({ error: 'אימייל זה כבר רשום' });
+    const existingUser = await User.findOne({ $or: [{ username }, { email }] });
+    if (existingUser) {
+      return res.status(400).json({ error: existingUser.username === username ? 'שם משתמש זה כבר קיים' : 'אימייל זה כבר רשום' });
     }
 
+    const lastUser = await User.findOne().sort({ id: -1 });
+    const newId = lastUser ? lastUser.id + 1 : 1;
+
     const hashedPassword = await bcryptjs.hash(password, 10);
-    const newUser = {
-      id: users.length > 0 ? Math.max(...users.map(u => u.id)) + 1 : 1,
+    const newUser = new User({
+      id: newId,
       username,
       email,
       passwordHash: hashedPassword,
-      createdAt: new Date().toISOString(),
       role: 'user',
-    };
+    });
 
-    users.push(newUser);
-    writeUsers(users);
+    await newUser.save();
 
     const token = jwt.sign(
       { id: newUser.id, username: newUser.username, email: newUser.email, role: newUser.role },
@@ -229,8 +244,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Missing email or password' });
     }
 
-    const users = readUsers();
-    const user = users.find(u => u.email === email);
+    const user = await User.findOne({ email });
 
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -270,7 +284,8 @@ app.get('/api/auth/me', (req, res) => {
   res.json(user);
 });
 
-app.get('/api/admin/users', (req, res) => {
+// Admin endpoints
+app.get('/api/admin/users', async (req, res) => {
   try {
     const user = requireAuth(req, res);
     if (!user) return;
@@ -279,14 +294,8 @@ app.get('/api/admin/users', (req, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const users = readUsers();
-    res.json(users.map(u => ({
-      id: u.id,
-      username: u.username,
-      email: u.email,
-      role: u.role,
-      createdAt: u.createdAt,
-    })));
+    const users = await User.find({}, '-passwordHash');
+    res.json(users);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch users' });
   }
@@ -311,26 +320,24 @@ app.post('/api/admin/users', async (req, res) => {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
-    const users = readUsers();
-    if (users.some(u => u.username === username)) {
-      return res.status(400).json({ error: 'שם משתמש זה כבר קיים' });
-    }
-    if (users.some(u => u.email === email)) {
-      return res.status(400).json({ error: 'אימייל זה כבר קיים' });
+    const existingUser = await User.findOne({ $or: [{ username }, { email }] });
+    if (existingUser) {
+      return res.status(400).json({ error: 'שם משתמש או אימייל קיימים' });
     }
 
+    const lastUser = await User.findOne().sort({ id: -1 });
+    const newId = lastUser ? lastUser.id + 1 : 1;
+
     const hashedPassword = await bcryptjs.hash(password, 10);
-    const newUser = {
-      id: users.length > 0 ? Math.max(...users.map(u => u.id)) + 1 : 1,
+    const newUser = new User({
+      id: newId,
       username,
       email,
       passwordHash: hashedPassword,
-      createdAt: new Date().toISOString(),
       role: 'user',
-    };
+    });
 
-    users.push(newUser);
-    writeUsers(users);
+    await newUser.save();
 
     res.status(201).json({
       id: newUser.id,
@@ -357,43 +364,47 @@ app.put('/api/admin/users/:id', async (req, res) => {
     const userId = parseInt(req.params.id);
     const { username, email, password, role } = req.body;
 
-    const users = readUsers();
-    const userIndex = users.findIndex(u => u.id === userId);
+    const targetUser = await User.findOne({ id: userId });
 
-    if (userIndex === -1) {
+    if (!targetUser) {
       return res.status(404).json({ error: 'User not found' });
     }
 
     if (username) {
-      if (users.some(u => u.id !== userId && u.username === username)) {
+      const existingUser = await User.findOne({ username, id: { $ne: userId } });
+      if (existingUser) {
         return res.status(400).json({ error: 'שם משתמש זה כבר קיים' });
       }
-      users[userIndex].username = username;
+      targetUser.username = username;
     }
+
     if (email) {
-      if (users.some(u => u.id !== userId && u.email === email)) {
+      const existingUser = await User.findOne({ email, id: { $ne: userId } });
+      if (existingUser) {
         return res.status(400).json({ error: 'אימייל זה כבר בשימוש' });
       }
-      users[userIndex].email = email;
+      targetUser.email = email;
     }
+
     if (password) {
       if (password.length < 6) {
         return res.status(400).json({ error: 'Password must be at least 6 characters' });
       }
-      users[userIndex].passwordHash = await bcryptjs.hash(password, 10);
-    }
-    if (role && ['user', 'admin'].includes(role)) {
-      users[userIndex].role = role;
+      targetUser.passwordHash = await bcryptjs.hash(password, 10);
     }
 
-    writeUsers(users);
+    if (role && ['user', 'admin'].includes(role)) {
+      targetUser.role = role;
+    }
+
+    await targetUser.save();
 
     res.json({
-      id: users[userIndex].id,
-      username: users[userIndex].username,
-      email: users[userIndex].email,
-      role: users[userIndex].role,
-      createdAt: users[userIndex].createdAt,
+      id: targetUser.id,
+      username: targetUser.username,
+      email: targetUser.email,
+      role: targetUser.role,
+      createdAt: targetUser.createdAt,
     });
   } catch (err) {
     console.error('Update user error:', err);
@@ -401,7 +412,7 @@ app.put('/api/admin/users/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/admin/users/:id', (req, res) => {
+app.delete('/api/admin/users/:id', async (req, res) => {
   try {
     const user = requireAuth(req, res);
     if (!user) return;
@@ -411,15 +422,11 @@ app.delete('/api/admin/users/:id', (req, res) => {
     }
 
     const userId = parseInt(req.params.id);
-    const users = readUsers();
-    const userIndex = users.findIndex(u => u.id === userId);
+    const result = await User.deleteOne({ id: userId });
 
-    if (userIndex === -1) {
+    if (result.deletedCount === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
-
-    users.splice(userIndex, 1);
-    writeUsers(users);
 
     res.json({ message: 'User deleted' });
   } catch (err) {
@@ -428,9 +435,15 @@ app.delete('/api/admin/users/:id', (req, res) => {
   }
 });
 
-app.get('/api/recipes', (req, res) => {
-  const recipes = readRecipes();
-  res.json(recipes);
+// Recipe endpoints
+app.get('/api/recipes', async (req, res) => {
+  try {
+    const recipes = await Recipe.find({});
+    res.json(recipes);
+  } catch (err) {
+    console.error('Error fetching recipes:', err);
+    res.status(500).json({ error: 'Failed to fetch recipes' });
+  }
 });
 
 app.post('/api/recipes', async (req, res) => {
@@ -438,26 +451,28 @@ app.post('/api/recipes', async (req, res) => {
     const user = requireAuth(req, res);
     if (!user) return;
 
-    const recipes = readRecipes();
-    const newRecipe = {
-      id: recipes.length > 0 ? Math.max(...recipes.map(r => r.id)) + 1 : 1,
+    const lastRecipe = await Recipe.findOne().sort({ id: -1 });
+    const newId = lastRecipe ? lastRecipe.id + 1 : 1;
+
+    const newRecipe = new Recipe({
+      id: newId,
       ...req.body,
       authorId: user.id,
-      createdAt: new Date().toISOString(),
-    };
+      author: user.username,
+      createdAt: new Date(),
+    });
 
     if (!newRecipe.image) {
-      console.log(`🖼️ No image for "${newRecipe.name}", fetching...`);
       const image = await fetchRecipeImage(newRecipe.name);
       if (image) {
         newRecipe.image = image;
       }
     }
 
-    recipes.push(newRecipe);
-    writeRecipes(recipes);
+    await newRecipe.save();
     res.status(201).json(newRecipe);
   } catch (err) {
+    console.error('Error adding recipe:', err);
     res.status(500).json({ error: 'Failed to add recipe' });
   }
 });
@@ -467,79 +482,73 @@ app.put('/api/recipes/:id', async (req, res) => {
     const user = requireAuth(req, res);
     if (!user) return;
 
-    const recipes = readRecipes();
     const id = parseInt(req.params.id);
-    const index = recipes.findIndex(r => r.id === id);
+    const recipe = await Recipe.findOne({ id });
 
-    if (index === -1) {
+    if (!recipe) {
       return res.status(404).json({ error: 'Recipe not found' });
     }
 
-    const recipe = recipes[index];
     if (recipe.authorId !== user.id && user.role !== 'admin') {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const updatedRecipe = { ...recipes[index], ...req.body, id, authorId: recipe.authorId };
-    // Only override author if user is not admin (keep it unchanged for non-admins)
+    const updatedData = { ...req.body, id, authorId: recipe.authorId };
+
     if (user.role !== 'admin') {
-      updatedRecipe.author = recipe.author;
+      updatedData.author = recipe.author;
     } else if (req.body.author && req.body.author !== recipe.author) {
-      // Admin changed the author name - look up the new author's ID
-      const users = readUsers();
-      const newAuthor = users.find(u => u.username === req.body.author);
+      const newAuthor = await User.findOne({ username: req.body.author });
       if (newAuthor) {
-        updatedRecipe.authorId = newAuthor.id;
+        updatedData.authorId = newAuthor.id;
       }
     }
 
-    if (!updatedRecipe.image) {
-      console.log(`🖼️ No image for "${updatedRecipe.name}", fetching...`);
-      const image = await fetchRecipeImage(updatedRecipe.name);
+    if (!updatedData.image) {
+      const image = await fetchRecipeImage(updatedData.name);
       if (image) {
-        updatedRecipe.image = image;
+        updatedData.image = image;
       }
     }
 
-    recipes[index] = updatedRecipe;
-    writeRecipes(recipes);
-    res.json(recipes[index]);
+    Object.assign(recipe, updatedData);
+    await recipe.save();
+    res.json(recipe);
   } catch (err) {
+    console.error('Error updating recipe:', err);
     res.status(500).json({ error: 'Failed to update recipe' });
   }
 });
 
-app.delete('/api/recipes/:id', (req, res) => {
+app.delete('/api/recipes/:id', async (req, res) => {
   try {
     const user = requireAuth(req, res);
     if (!user) return;
 
-    const recipes = readRecipes();
     const id = parseInt(req.params.id);
-    const index = recipes.findIndex(r => r.id === id);
+    const recipe = await Recipe.findOne({ id });
 
-    if (index === -1) {
+    if (!recipe) {
       return res.status(404).json({ error: 'Recipe not found' });
     }
 
-    const recipe = recipes[index];
     if (recipe.authorId !== user.id && user.role !== 'admin') {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    recipes.splice(index, 1);
-    writeRecipes(recipes);
+    await Recipe.deleteOne({ id });
     res.json({ message: 'Recipe deleted' });
   } catch (err) {
+    console.error('Error deleting recipe:', err);
     res.status(500).json({ error: 'Failed to delete recipe' });
   }
 });
 
-app.post('/api/recipes/:id/reviews', (req, res) => {
+// Reviews endpoints
+app.post('/api/recipes/:id/reviews', async (req, res) => {
   try {
-    const recipes = readRecipes();
     const id = parseInt(req.params.id);
-    const recipe = recipes.find(r => r.id === id);
+    const recipe = await Recipe.findOne({ id });
 
     if (!recipe) {
       return res.status(404).json({ error: 'Recipe not found' });
@@ -555,10 +564,6 @@ app.post('/api/recipes/:id/reviews', (req, res) => {
       return res.status(400).json({ error: 'Rating must be between 1 and 5' });
     }
 
-    if (!recipe.reviews) {
-      recipe.reviews = [];
-    }
-
     const newReview = {
       id: `r${Date.now()}`,
       author,
@@ -570,26 +575,22 @@ app.post('/api/recipes/:id/reviews', (req, res) => {
     recipe.reviews.push(newReview);
     recipe.averageRating = calculateAverageRating(recipe.reviews);
 
-    writeRecipes(recipes);
+    await recipe.save();
     res.status(201).json(newReview);
   } catch (err) {
+    console.error('Error adding review:', err);
     res.status(500).json({ error: 'Failed to add review' });
   }
 });
 
-app.delete('/api/recipes/:id/reviews/:reviewId', (req, res) => {
+app.delete('/api/recipes/:id/reviews/:reviewId', async (req, res) => {
   try {
-    const recipes = readRecipes();
     const id = parseInt(req.params.id);
     const reviewId = req.params.reviewId;
-    const recipe = recipes.find(r => r.id === id);
+    const recipe = await Recipe.findOne({ id });
 
     if (!recipe) {
       return res.status(404).json({ error: 'Recipe not found' });
-    }
-
-    if (!recipe.reviews) {
-      return res.status(404).json({ error: 'Review not found' });
     }
 
     const reviewIndex = recipe.reviews.findIndex(r => r.id === reviewId);
@@ -600,13 +601,15 @@ app.delete('/api/recipes/:id/reviews/:reviewId', (req, res) => {
     recipe.reviews.splice(reviewIndex, 1);
     recipe.averageRating = calculateAverageRating(recipe.reviews);
 
-    writeRecipes(recipes);
+    await recipe.save();
     res.json({ message: 'Review deleted' });
   } catch (err) {
+    console.error('Error deleting review:', err);
     res.status(500).json({ error: 'Failed to delete review' });
   }
 });
 
+// AI endpoints
 app.post('/api/ai/search', async (req, res) => {
   try {
     const { query, recipes } = req.body;
@@ -674,6 +677,7 @@ app.post('/api/ai/chat', async (req, res) => {
 
 // SPA fallback: serve index.html for client-side routing
 app.get('*', (req, res) => {
+  const distPath = join(__dirname, '..', 'dist');
   res.sendFile(join(distPath, 'index.html'));
 });
 
