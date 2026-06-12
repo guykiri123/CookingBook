@@ -67,10 +67,7 @@ const User = mongoose.model('User', userSchema);
 const Recipe = mongoose.model('Recipe', recipeSchema);
 
 // Connect to MongoDB
-mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-}).then(() => {
+mongoose.connect(MONGODB_URI).then(() => {
   console.log('✅ Connected to MongoDB');
 }).catch(err => {
   console.error('❌ MongoDB connection error:', err.message);
