@@ -231,6 +231,19 @@ recipe-app/
 - **Typography:** Frank Ruhl Libre (Hebrew headings), Heebo (body)
 - **Direction:** RTL (right-to-left) for Hebrew
 
+### External Services & Infrastructure
+- **[Anthropic Claude API](https://www.anthropic.com)** — AI-powered natural language search and recipe chat assistant
+  - Model: `claude-haiku-4-5-20251001` (fast, cost-efficient)
+  - Features: Smart recipe search, cooking advice in Hebrew
+- **[GitHub](https://github.com/guykiri123/CookingBook)** — Source control & version management
+- **[Render](https://render.com)** — Cloud deployment platform
+  - Hosts the live app: https://cookingbook-bf50.onrender.com
+  - Free tier with auto-deploy on `main` branch push
+  - Persistent storage for recipes.json and users.json
+- **[UptimeRobot](https://uptimerobot.com)** — Uptime monitoring & keep-alive service
+  - Pings the app every 5 minutes to prevent Render free tier from sleeping
+  - Free tier available
+
 ---
 
 ## 🤝 תרומה
