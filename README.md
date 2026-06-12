@@ -53,8 +53,9 @@ npm run dev
 ## 💻 Setup למתפתחים
 
 ### דרישות
-- **Node.js** 18+ ו-npm 9+
+- **Node.js** 20+ ו-npm 9+
 - **Anthropic API Key** (free or paid) — עבור AI features
+- **MongoDB Atlas account** (free tier) — עבור persistence (https://www.mongodb.com/cloud/atlas)
 
 ### התקנה
 
@@ -68,7 +69,9 @@ npm install
 
 # Create .env file
 echo 'ANTHROPIC_API_KEY=sk-ant-api03-YOUR-KEY-HERE' > .env
+echo 'MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net/cookingbook' >> .env
 echo 'JWT_SECRET=your-secret-key-change-in-production' >> .env
+echo 'UNSPLASH_ACCESS_KEY=your-unsplash-key-optional' >> .env
 
 # Start dev server (Vite + Express)
 npm run dev
@@ -103,7 +106,9 @@ npm run lint     # Run ESLint
    - Set **Start Command:** `cd recipe-app && npm start`
 
 4. **Add Environment Variables** (in Render dashboard):
+   - `MONGODB_URI=mongodb+srv://...` (from MongoDB Atlas connection string)
    - `ANTHROPIC_API_KEY=sk-ant-api03-...` (from https://console.anthropic.com)
+   - `UNSPLASH_ACCESS_KEY=...` (optional, from https://unsplash.com/developers)
    - `JWT_SECRET=your-secret-key-change-in-production`
 
 5. **Keep-Alive (Optional):** Use [UptimeRobot](https://uptimerobot.com) (free) to ping your service every 5 minutes so it never sleeps
@@ -171,14 +176,30 @@ node sync-from-mongo.js --watch
 
 | משתנה | דרוש? | תיאור |
 |-------|--------|-------|
+| `MONGODB_URI` | ✅ כן | MongoDB Atlas connection string (e.g., `mongodb+srv://user:pass@cluster.mongodb.net/cookingbook`) |
 | `ANTHROPIC_API_KEY` | ✅ כן | API key מ-https://console.anthropic.com |
+| `UNSPLASH_ACCESS_KEY` | ⚠️ אופציונלי | API key מ-https://unsplash.com/developers (עבור auto-generated recipe images) |
 | `JWT_SECRET` | אופציונלי | סוד החתימה, Default: `'your-secret-key-change-in-production'` |
+
+**איך להשיג MongoDB URI:**
+1. עבור ל-https://www.mongodb.com/cloud/atlas
+2. הרשם (free tier זמין)
+3. בנה cluster חדש
+4. בחר "Drivers" → "Connect" → "Connection String"
+5. Copy את ה-connection string, החלף את `<password>` בסיסמה
+6. Paste ל-.env בתור `MONGODB_URI`
 
 **איך להשיג Anthropic API Key:**
 1. עבור ל-https://console.anthropic.com
 2. בדוק את ה-billing ודפק שיש credits
 3. עבור ל-API keys וקליק "Create Key"
 4. Copy את ה-key ולהדביק לתוך `.env`
+
+**איך להשיג Unsplash API Key (optional):**
+1. עבור ל-https://unsplash.com/developers
+2. הרשם וקבל אפליקציה
+3. Copy את `Access Key`
+4. Paste ל-.env בתור `UNSPLASH_ACCESS_KEY`
 
 ---
 
@@ -216,8 +237,10 @@ recipe-app/
 │   ├── index.js              # Express API server
 │   └── middleware/           # Auth, error handling
 ├── data/
-│   ├── recipes.json          # Generated from recipes.js
-│   └── users.json            # User database (bcrypt hashed)
+│   ├── recipes.json          # Synced from MongoDB (local backup)
+│   ├── users.json            # Synced from MongoDB (local backup)
+│   └── migrate-data.js       # Script to migrate JSON to MongoDB
+├── sync-from-mongo.js        # Sync script: downloads MongoDB → local JSON
 ├── vite.config.js
 ├── package.json
 ├── tailwind.config.js        # (Ignored by Tailwind v4)
@@ -271,6 +294,8 @@ recipe-app/
 
 ### Backend
 - **Express.js** — REST API
+- **MongoDB** — NoSQL database (persistent data storage)
+- **Mongoose** — ODM for MongoDB
 - **JWT** — Authentication (jsonwebtoken)
 - **bcryptjs** — Password hashing
 - **dotenv** — Environment variables
@@ -281,14 +306,21 @@ recipe-app/
 - **Direction:** RTL (right-to-left) for Hebrew
 
 ### External Services & Infrastructure
+- **[MongoDB Atlas](https://www.mongodb.com/cloud/atlas)** — Cloud NoSQL database
+  - Free tier with 512MB storage
+  - Persistent storage for recipes, users, and reviews
+  - Connected via Mongoose ODM in Express
 - **[Anthropic Claude API](https://www.anthropic.com)** — AI-powered natural language search and recipe chat assistant
   - Model: `claude-haiku-4-5-20251001` (fast, cost-efficient)
   - Features: Smart recipe search, cooking advice in Hebrew
+- **[Unsplash API](https://unsplash.com/developers)** — Auto-generate recipe images
+  - Free tier with 50 requests/hour
+  - Translates Hebrew recipe names to English for better image matches
 - **[GitHub](https://github.com/guykiri123/CookingBook)** — Source control & version management
 - **[Render](https://render.com)** — Cloud deployment platform
   - Hosts the live app: https://cookingbook-bf50.onrender.com
   - Free tier with auto-deploy on `main` branch push
-  - Persistent storage for recipes.json and users.json
+  - Connects to MongoDB Atlas for persistent data
 - **[UptimeRobot](https://uptimerobot.com)** — Uptime monitoring & keep-alive service
   - Pings the app every 5 minutes to prevent Render free tier from sleeping
   - Free tier available
@@ -300,32 +332,23 @@ recipe-app/
 אנחנו מברכים תרומות! כך תוכל לעזור:
 
 ### הוספת מתכון חדש
-1. ערוך [`recipe-app/src/data/recipes.js`](recipe-app/src/data/recipes.js)
-2. הוסף recipe object חדש למערך:
-   ```js
-   {
-     id: 'new-recipe',
-     name: 'שם המתכון',
-     description: 'תיאור קצר',
-     difficulty: 'קל' | 'בינוני' | 'קשה',
-     cuisine: 'קטגוריה',
-     dietType: 'בשרי' | 'חלבי' | 'פרווה' | 'דגים',
-     prepTime: 'פחות מ-30' | '30-60' | 'יותר משעה',
-     servings: 4,
-     ingredients: [{ name: 'חומר', amount: 2, unit: 'כוס' }],
-     instructions: ['צעד 1', 'צעד 2'],
-     cookTime: 20,
-     tips: 'עצה שימושית',
-     createdAt: new Date().toISOString(),
-     author: 'שמך',
-     authorId: 'your-user-id',
-   }
-   ```
-3. ריצה:
-   ```bash
-   node -e "import recipes from './src/data/recipes.js'; import fs from 'fs'; fs.writeFileSync('./data/recipes.json', JSON.stringify(recipes, null, 2), 'utf-8');"
-   ```
-4. הפעל `npm run dev` מחדש וודא שמתכון חדש הוא כאן
+**דרך 1: דרך ה-UI (מומלץ)**
+1. פתח http://localhost:5173 (או https://cookingbook-bf50.onrender.com)
+2. התחבר לחשבון שלך
+3. לחץ "⨚ הוסף מתכון" בNavBar
+4. מלא פרטים והוסף
+5. המתכון נשמר אוטומטית ל-MongoDB
+
+**דרך 2: ידני (development)**
+1. ערוך [`recipe-app/src/data/recipes.js`](recipe-app/src/data/recipes.js) (development backup)
+2. הוסף object חדש למערך
+3. **תשכח מהremigrate!** עכשיו הנתונים הם ב-MongoDB, לא בJSON
+
+**סנכרון ל-Local:**
+```bash
+node sync-from-mongo.js
+```
+הקבצים JSON יתעדכנו מ-MongoDB
 
 ### שיפור עיצוב
 - Colors בקובץ [`src/index.css`](recipe-app/src/index.css) `@theme` block
@@ -346,13 +369,25 @@ recipe-app/
 → ודא שאתה ב-http://localhost:5173 (בדוק את ה-port שנדפס על ידי Vite)
 
 ### "Recipe server is down" / API errors
-→ בדוק שExpressתחת port 3001. ריצה `npm run dev` מחדש.
+→ בדוק שExpress רץ על port 3001. ריצה `npm run dev` מחדש.
+
+### "MongoDB connection error"
+→ בדוק:
+- `MONGODB_URI` בתוך `.env` (נוכחי?)
+- IP whitelist ב-MongoDB Atlas (הוסף 0.0.0.0/0)
+- Render environment variables (סט ב-dashboard?)
+
+### "Recipes not appearing"
+→ בדוק שMongoDB מחובר (לא error בserverogs). הרץ `node sync-from-mongo.js` להוריד נתונים.
 
 ### AI features don't work
-→ בדוק `ANTHROPIC_API_KEY` בתוך `.env` וודא accounts יש credits.
+→ בדוק `ANTHROPIC_API_KEY` בתוך `.env` וודא חשבון יש credits.
 
-### "Unexpected token" בrecipes.json
-→ **לעולם לא** השתמש בPowerShell לערוך recipes.json. תמיד השתמש ב-Node.js script.
+### Recipe images don't load
+→ `UNSPLASH_ACCESS_KEY` אופציונלי. אם הוא הוגדר, בדוק את ה-API quota בUnsplash.
+
+### Local files out of sync
+→ הרץ: `node sync-from-mongo.js --watch` (סנכרון אוטומטי כל 30 שניות)
 
 ראה [`CLAUDE.md`](CLAUDE.md) לעוד troubleshooting tips.
 
