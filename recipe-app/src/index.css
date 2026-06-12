@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@theme {
+  /* Warm palette */
+  --color-primary: #8b6f47;
+  --color-primary-dark: #6f5037;
+  --color-secondary: #a8d5ba;
+  --color-secondary-dark: #8bc299;
+  --color-cream: #fefdf9;
+  --color-accent: #d4a574;
+  --color-accent-soft: #ecd9c1;
+  --color-ink: #2c2c2c;
+  --color-ink-soft: #555555;
+
+  /* Status */
+  --color-danger: #e74c3c;
+  --color-success: #27ae60;
+  --color-info: #3498db;
+  --color-warning: #e67e22;
+
+  /* Fonts */
+  --font-display: "Frank Ruhl Libre", Georgia, serif;
+  --font-sans: "Heebo", "Segoe UI", system-ui, sans-serif;
+
+  /* Animations */
+  --animate-fade-up: fade-up 0.6s ease-out both;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  direction: rtl;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--color-cream);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  width: 100%;
+  min-height: 100svh;
+}
+
+/* Respect reduced-motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Custom select arrow positioned for RTL */
+.select-rtl {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b6f47' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 1rem center;
+  appearance: none;
+  -webkit-appearance: none;
+}

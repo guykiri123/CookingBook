@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "username": "guy kiri",
+    "email": "guykiri123@gmail.com",
+    "passwordHash": "$2b$10$kN0lm2VRzguy42102hzpZ.czAgTdnuL7NUMdCMkL1tdRqqMdnSX.e",
+    "createdAt": "2026-06-07T14:17:55.230Z",
+    "role": "admin"
+  },
+  {
+    "id": 2,
+    "username": "check account",
+    "email": "guy1597535@wall.co.il",
+    "passwordHash": "$2b$10$XuHpL6vWAjgtXepZ5evfw.5HwYSKHO0qwUJq5qIfLBbDav.qSz.Oy",
+    "createdAt": "2026-06-07T14:34:26.348Z",
+    "role": "user"
+  },
+  {
+    "id": 3,
+    "username": "tal kiri",
+    "email": "agamtzanhanim@gmail.com",
+    "passwordHash": "$2b$10$iVmtt9sb9yUcGYu94YQ6su1lNik3EJaA7XZPErjECs7ydkXYhPH9a",
+    "createdAt": "2026-06-07T14:47:22.565Z",
+    "role": "user"
+  }
+]

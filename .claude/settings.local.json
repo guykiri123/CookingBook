@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la ~/.claude/settings.json ~/.claude/settings.local.json \"c:\\\\Users\\\\guy\\\\Desktop\\\\cooking book\\\\.claude\\\\settings.json\" \"c:\\\\Users\\\\guy\\\\Desktop\\\\cooking book\\\\.claude\\\\settings.local.json\" 2>&1)",
+      "Read(//c/Users/guy/.claude/**)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(py:*)",
+      "PowerShell(python:*)",
+      "PowerShell(python3:*)",
+      "PowerShell(py:*)"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "context7"
+  ]
+}
