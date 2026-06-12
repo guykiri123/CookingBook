@@ -19,6 +19,16 @@ npm run lint      # ESLint
 
 ---
 
+## Tech Stack
+
+**Frontend:** React 19 + Vite 8 + Tailwind CSS v4 (design tokens in `src/index.css` `@theme` block)  
+**Backend:** Express.js (Node.js, file-based persistence)  
+**AI:** Anthropic Claude API (`claude-haiku-4-5-20251001`)  
+**Auth:** JWT tokens + bcryptjs password hashing  
+**Deployment:** Render (auto-deploy on `main` push) + UptimeRobot keep-alive  
+
+---
+
 ## Solved Problems Log
 
 Check this before debugging — common issues and their fixes:
@@ -146,6 +156,21 @@ Three Context providers:
 - Check [server/index.js](recipe-app/server/index.js) for request logs.
 - Verify `.env` has `ANTHROPIC_API_KEY` + valid credits.
 - Verify recipes.json and users.json exist and are valid JSON.
+
+---
+
+## Contributing
+
+**Adding a new recipe:**
+1. Edit [src/data/recipes.js](recipe-app/src/data/recipes.js) — add object to recipes array with: `id, name, description, difficulty ('קל'|'בינוני'|'קשה'), cuisine, dietType ('בשרי'|'חלבי'|'פרווה'|'דגים'), prepTime ('פחות מ-30'|'30-60'|'יותר משעה'), servings, ingredients[{name, amount, unit}], instructions[], cookTime, tips, author`
+2. Regenerate JSON export: `node -e "import recipes from './src/data/recipes.js'; import fs from 'fs'; fs.writeFileSync('./data/recipes.json', JSON.stringify(recipes, null, 2), 'utf-8');"`
+3. Restart `npm run dev` (server reloads)
+4. Test locally at http://localhost:5173
+
+**Adding a new feature:**
+- Frontend: Add page to [pages/](recipe-app/src/pages/) or component to [components/](recipe-app/src/components/), extend `currentPage` switch in [App.jsx](recipe-app/src/App.jsx).
+- Backend: Add endpoint to [server/index.js](recipe-app/server/index.js), handle auth + persistence.
+- Test locally first with `npm run dev`, then push to `main` for auto-deploy.
 
 ---
 
