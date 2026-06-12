@@ -6,14 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **All commands from `recipe-app/`:**
 ```bash
-npm install       # Install dependencies
-npm run dev       # Start both servers (Vite 5173 + Express 3001)
-npm run build     # Production build
-npm run start     # Run production server
-npm run lint      # ESLint
+npm install                    # Install dependencies
+npm run dev                    # Start both servers (Vite 5173 + Express 3001)
+npm run build                  # Production build
+npm run start                  # Run production server
+npm run lint                   # ESLint
+
+# Data sync (from MongoDB to local JSON files)
+node sync-from-mongo.js        # One-time sync
+node sync-from-mongo.js --watch # Auto-sync every 30s (recommended for development)
 ```
 
-**Requirements:** Node.js 20+, `ANTHROPIC_API_KEY` in `.env`  
+**Requirements:** Node.js 20+, `ANTHROPIC_API_KEY` + `MONGODB_URI` in `.env`  
 **Live:** https://cookingbook-bf50.onrender.com  
 **Preferences:** [@CLAUDE.local.md](CLAUDE.local.md)
 
@@ -22,10 +26,12 @@ npm run lint      # ESLint
 ## Tech Stack
 
 **Frontend:** React 19 + Vite 8 + Tailwind CSS v4 (design tokens in `src/index.css` `@theme` block)  
-**Backend:** Express.js (Node.js, file-based persistence)  
+**Backend:** Express.js + MongoDB (Mongoose ODM) — persistent data storage  
 **AI:** Anthropic Claude API (`claude-haiku-4-5-20251001`)  
 **Auth:** JWT tokens + bcryptjs password hashing  
+**Database:** MongoDB Atlas (free tier) — stores recipes, users, reviews  
 **Deployment:** Render (auto-deploy on `main` push) + UptimeRobot keep-alive  
+**Sync:** sync-from-mongo.js script (downloads MongoDB → local JSON backup)  
 
 ---
 
@@ -57,6 +63,12 @@ Check this before debugging — common issues and their fixes:
 
 - **(2026-06-12) Admin can't change author name when editing** → (1) Frontend AddRecipePage must send author in PUT request (line 169-171): `if (!isEditing || user?.role === 'admin')`. (2) Backend must update both author name AND authorId by looking up the new author in users.json (server/index.js PUT endpoint).
 
+- **(2026-06-13) MongoDB connection error / recipes not appearing** → (1) `MONGODB_URI` missing from `.env` — add connection string from MongoDB Atlas. (2) IP not whitelisted in MongoDB Atlas — add `0.0.0.0/0` to network access. (3) Render deployment shows "could not connect to any servers in MongoDB cluster" — set `MONGODB_URI` in Render dashboard environment variables.
+
+- **(2026-06-13) Changes to recipes/reviews not syncing to local files** → Run `node sync-from-mongo.js --watch` in a separate terminal. Script automatically pulls data from MongoDB every 30s. Local JSON files are backups, not source of truth anymore.
+
+- **(2026-06-13) Server crashes with "mongoose connection pending"** → MongoDB connection timeout. Check: (1) `MONGODB_URI` is valid + credentials correct. (2) MongoDB cluster is running. (3) Network access whitelist includes Render IP or 0.0.0.0/0.
+
 ---
 
 ## Architecture Overview
@@ -64,10 +76,11 @@ Check this before debugging — common issues and their fixes:
 **No router.** Simple state machine in [App.jsx](recipe-app/src/App.jsx): `currentPage` is one of `'home'` | `'recipe'` | `'login'` | `'register'` | `'admin'` | `'myRecipes'`. To add a screen, extend the switch.
 
 **Data flow:**
-- **Source of truth:** [src/data/recipes.js](recipe-app/src/data/recipes.js) → auto-exported to [data/recipes.json](recipe-app/data/recipes.json)
-- **Frontend:** Fetches from `/api/recipes` (Express serves recipes.json)
-- **Context:** `RecipesProvider` + `AuthProvider` + `FavoritesProvider`
-- **Persistence:** Files on disk (recipes.json, users.json)
+- **Source of truth:** MongoDB (recipes, users, reviews collections)
+- **Backend:** Express queries MongoDB via Mongoose, caches responses, syncs real-time changes
+- **Frontend:** Fetches from `/api/recipes` (Express queries MongoDB, not files)
+- **Context:** `RecipesProvider` + `AuthProvider` + `FavoritesProvider` (all pull from `/api/*`)
+- **Local backup:** [data/recipes.json](recipe-app/data/recipes.json) + [data/users.json](recipe-app/data/users.json) (synced via `sync-from-mongo.js`, read-only)
 
 **Key concepts:**
 - **Ingredient scaling:** RecipePage multiplies amounts by `currentServings / recipe.servings`. Special case: `'לטעם'` ("to taste") never scales.
@@ -81,20 +94,36 @@ Check this before debugging — common issues and their fixes:
 
 ## Backend & Persistence
 
-Express server ([server/index.js](recipe-app/server/index.js)) provides REST API. All endpoints in code; key ones:
+**Express + MongoDB:**
+- Server ([server/index.js](recipe-app/server/index.js)) connects to MongoDB via Mongoose
+- Mongoose schemas: `User`, `Recipe` (with nested `reviews`)
+- Endpoints automatically sync changes to MongoDB
+- Each endpoint (`POST/PUT/DELETE`) also calls `syncToJSON()` to update local backup files
+
+**API Endpoints:**
 - `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`
-- `GET/POST/PUT/DELETE /api/recipes` (CRUD requires JWT)
-- `POST/DELETE /api/recipes/:id/reviews`
+- `GET/POST/PUT/DELETE /api/recipes` (CRUD requires JWT, writes to MongoDB + JSON backup)
+- `POST/DELETE /api/recipes/:id/reviews` (writes to MongoDB + JSON backup)
 - `POST /api/ai/search`, `POST /api/ai/chat`
 
-**Data files:**
-- [data/recipes.json](recipe-app/data/recipes.json) — canonical recipes. **Critical fields:** `id`, `authorId` (number, matches user.id), `author` (string, display name), `name`, `difficulty`, `ingredients[]`, `instructions[]`, `reviews[]`, `averageRating`. **Note:** `authorId` is required for "My Recipes" filtering and owner permission checks.
-- [data/users.json](recipe-app/data/users.json) — canonical users (id, username, email, passwordHash, role). **When admin edits recipe author:** look up user by new author username and update both `author` (name) and `authorId` (ID).
+**Sync scripts:**
+- [sync-from-mongo.js](recipe-app/sync-from-mongo.js) — pulls recipes/users from MongoDB, writes to local JSON. Use for local development: `node sync-from-mongo.js --watch` (auto-sync every 30s, recommended!)
+- [migrate-data.js](recipe-app/migrate-data.js) — one-time migration from JSON to MongoDB (already ran, keep for reference)
+
+**MongoDB Collections:**
+- `users` — `id`, `username`, `email`, `passwordHash`, `role`, `createdAt`
+- `recipes` — `id`, `name`, `description`, `difficulty`, `cuisine`, `dietType`, `prepTime`, `servings`, `cookTime`, `tips`, `image`, `author`, `authorId`, `createdAt`, `averageRating`, `ingredients[]`, `instructions[]`, `reviews[]`
+- `reviews` (nested in recipes) — `id`, `author`, `rating`, `text`, `createdAt`
+
+**Local JSON files (backup only):**
+- [data/recipes.json](recipe-app/data/recipes.json) — synced from MongoDB, **NOT** source of truth
+- [data/users.json](recipe-app/data/users.json) — synced from MongoDB, **NOT** source of truth
 
 **Environment variables:**
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
+| `MONGODB_URI` | ✅ | MongoDB Atlas connection string |
 | `ANTHROPIC_API_KEY` | ✅ | AI search + chat |
 | `UNSPLASH_ACCESS_KEY` | ⚠️ | Auto-generate recipe images |
 | `JWT_SECRET` | ❌ | Auth token signing (default: dev value) |
@@ -140,10 +169,20 @@ Three Context providers:
 
 ## Common Workflows
 
-**Modifying recipes:**
-1. Edit [src/data/recipes.js](recipe-app/src/data/recipes.js)
-2. Regenerate JSON: `node -e "import recipes from './src/data/recipes.js'; import fs from 'fs'; fs.writeFileSync('./data/recipes.json', JSON.stringify(recipes, null, 2), 'utf-8');"`
-3. Restart `npm run dev` (server reloads recipes.json)
+**Working with MongoDB data locally:**
+1. Run `npm run dev` in terminal 1 (starts Vite + Express)
+2. Run `node sync-from-mongo.js --watch` in terminal 2 (auto-syncs every 30s)
+3. Make changes via the app or Render website
+4. Local `recipes.json` + `users.json` auto-update within 30 seconds
+
+**Adding a new recipe (via UI):**
+1. Register/login
+2. Click "⨚ הוסף מתכון" in NavBar
+3. Fill form, submit → saved to MongoDB + synced to local JSON via `syncToJSON()`
+
+**Modifying recipes (development backup):**
+- Don't edit `recipes.json` directly! It's a backup from MongoDB.
+- Either: (1) Use the app UI, or (2) Edit `src/data/recipes.js` for development reference only.
 
 **Adding a component:** Functional + hooks, Tailwind classes inline, use Context for shared state.
 
@@ -159,23 +198,34 @@ Three Context providers:
 **Debugging:**
 - Express logs on `[1]` stream, Vite on `[0]`.
 - Check [server/index.js](recipe-app/server/index.js) for request logs.
+- Verify `.env` has `MONGODB_URI` + valid MongoDB Atlas cluster.
 - Verify `.env` has `ANTHROPIC_API_KEY` + valid credits.
-- Verify recipes.json and users.json exist and are valid JSON.
+- MongoDB connection logs appear in Express output.
 
 ---
 
 ## Contributing
 
 **Adding a new recipe:**
-1. Edit [src/data/recipes.js](recipe-app/src/data/recipes.js) — add object to recipes array with: `id, name, description, difficulty ('קל'|'בינוני'|'קשה'), cuisine, dietType ('בשרי'|'חלבי'|'פרווה'|'דגים'), prepTime ('פחות מ-30'|'30-60'|'יותר משעה'), servings, ingredients[{name, amount, unit}], instructions[], cookTime, tips, author`
-2. Regenerate JSON export: `node -e "import recipes from './src/data/recipes.js'; import fs from 'fs'; fs.writeFileSync('./data/recipes.json', JSON.stringify(recipes, null, 2), 'utf-8');"`
-3. Restart `npm run dev` (server reloads)
-4. Test locally at http://localhost:5173
+1. Use the app UI: Register → click "⨚ הוסף מתכון" → fill form → submit
+2. Recipe saved to MongoDB → auto-synced to local JSON via `syncToJSON()` + `sync-from-mongo.js --watch`
+3. Or, for development/testing, edit [src/data/recipes.js](recipe-app/src/data/recipes.js) (backup reference, **not** source of truth)
 
 **Adding a new feature:**
 - Frontend: Add page to [pages/](recipe-app/src/pages/) or component to [components/](recipe-app/src/components/), extend `currentPage` switch in [App.jsx](recipe-app/src/App.jsx).
-- Backend: Add endpoint to [server/index.js](recipe-app/server/index.js), handle auth + persistence.
-- Test locally first with `npm run dev`, then push to `main` for auto-deploy.
+- Backend: Add endpoint to [server/index.js](recipe-app/server/index.js). Include `await syncToJSON()` if endpoint modifies data.
+- Test locally first with `npm run dev` + `node sync-from-mongo.js --watch`, then push to `main` for auto-deploy.
+
+**Important: syncToJSON() pattern**
+Every endpoint that modifies data (POST/PUT/DELETE) must call `await syncToJSON()` to keep local JSON files in sync:
+```javascript
+app.post('/api/recipes', async (req, res) => {
+  // ... save to MongoDB ...
+  await newRecipe.save();
+  await syncToJSON();  // ← ALWAYS include this
+  res.status(201).json(newRecipe);
+});
+```
 
 ---
 
@@ -186,13 +236,24 @@ Three Context providers:
 
 **Setup files:**
 - `.nvmrc` — specifies Node.js 20
-- [server/index.js](recipe-app/server/index.js) — serves both API + static files from `dist/`
+- [server/index.js](recipe-app/server/index.js) — serves both API + static files from `dist/`, connects to MongoDB
 - [package.json](recipe-app/package.json) — has `"start": "node server/index.js"`
 
-**Environment (set in Render dashboard):**
-- `ANTHROPIC_API_KEY` — required for AI
+**Environment variables (set in Render dashboard):**
+- `MONGODB_URI` — **required** — MongoDB Atlas connection string (e.g., `mongodb+srv://user:pass@cluster.mongodb.net/cookingbook`)
+- `ANTHROPIC_API_KEY` — required for AI features
+- `UNSPLASH_ACCESS_KEY` — optional, for auto-generated recipe images
 - `JWT_SECRET` — optional, defaults to dev value
+
+**MongoDB setup on Render:**
+1. Create cluster on MongoDB Atlas (free tier: 512MB)
+2. Whitelist Render IP: Security → Network Access → Add `0.0.0.0/0` (or specific Render IP)
+3. Get connection string: Databases → Connect → Connection String
+4. Set `MONGODB_URI` in Render dashboard
 
 **Keep-alive:** UptimeRobot pings every 5 min (prevents Render free tier sleep after 15 min inactivity).
 
-**Note:** Data persists (recipes.json, users.json safe), but instance sleeps if not pinged. Upgrade to paid tier for always-on.
+**Data persistence:**
+- Recipes, users, reviews live in MongoDB Atlas (persistent across restarts)
+- Local JSON files are read-only backups (sync'd via `sync-from-mongo.js`)
+- Render instance is ephemeral, but MongoDB is permanent
