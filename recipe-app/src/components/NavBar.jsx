@@ -74,7 +74,7 @@ export default function NavBar({ onLogoClick, onShowFavorites, onShowAddRecipe, 
           aria-label="חזרה לדף הבית"
         >
           <LogoIcon />
-          <span>ספר המתכונים</span>
+          <span>מתכוניה</span>
         </button>
 
         <div className="flex items-center gap-1 sm:gap-2">
