@@ -132,7 +132,7 @@ function App() {
         isLoggedIn={isLoggedIn}
         user={user}
       />
-      <main>{page}</main>
+      <main key={currentPage} className="animate-page-enter">{page}</main>
     </div>
   );
 }

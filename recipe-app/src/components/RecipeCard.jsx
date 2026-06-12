@@ -36,7 +36,7 @@ export default function RecipeCard({ recipe, onSelect }) {
   return (
     <article
       onClick={() => onSelect(recipe.id)}
-      className="group h-full bg-white rounded-2xl border border-accent/20 shadow-sm overflow-hidden flex flex-col cursor-pointer transition-all duration-300 hover:-translate-y-2 hover:shadow-xl"
+      className="group h-full bg-white rounded-2xl border border-accent/20 shadow-sm overflow-hidden flex flex-col cursor-pointer recipe-card-hover"
     >
       {/* Image (or placeholder) */}
       <div className="relative h-44 bg-gradient-to-br from-accent-soft to-accent/50 flex items-center justify-center overflow-hidden">

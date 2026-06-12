@@ -49,6 +49,10 @@ their own dedicated sections below — don't duplicate them here.)
   Cause: When onClick calls a function directly (e.g., `onClick={handleFunc}`), the browser passes the SyntheticEvent as the first parameter.
   Solution: Always wrap event handlers in arrow functions: `onClick={() => handleFunc()}` or `onClick={() => handleFunc(arg1, arg2)}`. This prevents unintended parameters.
 
+- **(2026-06-12) Page transitions feel abrupt / no animation between pages**
+  Cause: `<main>` was re-rendering on `currentPage` change without animation support. Missing keyframe and CSS class definitions.
+  Solution: (1) Added `@keyframes page-enter` to `src/index.css`: opacity 0→1 + translateY(14px)→0 over 0.35s. (2) Added `key={currentPage}` to `<main>` in App.jsx + class `animate-page-enter` so React re-mounts and triggers the animation. (3) Shortened `animate-fade-up` from 0.6s to 0.5s for snappier feel.
+
 ## Project layout
 
 The actual application lives in the `recipe-app/` subdirectory, not the repo root. Run all commands from `recipe-app/`:
@@ -200,7 +204,12 @@ A 2026-06-01 security review (pre-backend) found no XSS, secret-exposure, or dep
 
 - The design system (colors, fonts, animations) is defined in the `@theme` block of [recipe-app/src/index.css](recipe-app/src/index.css), **not** in `tailwind.config.js`. That config file exists but is ignored by Tailwind v4.
 - CSS must use `@import "tailwindcss";` — the v3-style `@tailwind base/components/utilities` directives do **not** generate styles correctly here (this was a real bug that produced a near-empty stylesheet).
-- Custom theme tokens become utility classes: colors `bg-primary`, `text-ink`, `bg-cream`, `bg-secondary`, `border-accent` etc.; fonts `font-display` (Frank Ruhl Libre, for headings) and `font-sans` (Heebo); animation `animate-fade-up`. There is also a hand-written `.select-rtl` class for the RTL dropdown arrow.
+- Custom theme tokens become utility classes: colors `bg-primary`, `text-ink`, `bg-cream`, `bg-secondary`, `border-accent` etc.; fonts `font-display` (Frank Ruhl Libre, for headings) and `font-sans` (Heebo); animations `animate-fade-up` and `animate-page-enter`. There is also a hand-written `.recipe-card-hover`, `.btn-hover`, and `.select-rtl` class for interactions and the RTL dropdown arrow.
+
+**Design system (2026-06-12 redesign):**
+- **Color palette:** Warm & earthy — primary is terracotta `#b85c38` (was brown `#8b6f47`), secondary is olive `#7a9a5c` (was sage `#a8d5ba`), cream is warmer parchment `#fdf6ec` (was `#fefdf9`), ink is warm-black `#2c1f14` (was `#2c2c2c`). Accent is deeper rust `#d4855a`.
+- **Animations:** (1) `fade-up` — entrance animation, 0.5s ease-out. (2) `page-enter` — page transitions, 0.35s ease-out (fade + slight slide). (3) `.recipe-card-hover` — cards lift 5px + shadow on hover. (4) `.btn-hover` — buttons scale 1.03 + brighten on hover.
+- **Icons:** All emoji icons in NavBar replaced with inline SVG components (`LogoIcon`, `SearchIcon`, `HeartIcon`, `PlusIcon`, `BookmarkIcon`, `GearIcon`). SVGs are 20–24px, line-art style (stroke-based, no fill), stroke-width 1.8, currentColor for consistent theming.
 
 ## RTL / Hebrew conventions
 
@@ -220,6 +229,12 @@ A 2026-06-01 security review (pre-backend) found no XSS, secret-exposure, or dep
 - Functional components with React hooks; prefer `useState` and context hooks over external state libraries.
 - Import styles inline (Tailwind classes); avoid separate CSS files except for `index.css` (global design tokens).
 - Use semantic HTML and test with a screen reader (components have `aria-` labels where appropriate).
+
+**Customizing the design system:**
+- Colors are in the `@theme` block of `src/index.css` (primary, secondary, cream, accent, ink, etc.). Update them there, not in a config file.
+- Animations: add `@keyframes` and register in `@theme` as `--animate-name`. Reusable via `animate-name` class.
+- Hover effects: use `.recipe-card-hover` for cards (lift + shadow), `.btn-hover` for buttons (scale + brighten). Add similar classes to `index.css` as needed.
+- SVG icons in NavBar: defined as functional components at the top of [recipe-app/src/components/NavBar.jsx](recipe-app/src/components/NavBar.jsx). Each uses `stroke=currentColor` so they inherit text color; update stroke-width or size if styling changes.
 
 **Testing AI features:**
 - **Smart search:** On HomePage, toggle the "חכם" button next to search, then type a natural language query (e.g., "משהו קל וחלבי"). Results should appear after 600ms debounce. Check Express server logs (`[1]`) to see `/api/ai/search` requests.

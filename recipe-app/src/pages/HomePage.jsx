@@ -113,21 +113,21 @@ export default function HomePage({ onSelectRecipe }) {
       {/* Hero */}
       <section
         id="search"
-        className="bg-gradient-to-br from-accent-soft via-cream to-secondary/40 border-b border-accent/20"
+        className="bg-gradient-to-br from-accent-soft via-cream to-secondary/20 border-b border-accent/20"
       >
         <div className="max-w-3xl mx-auto px-4 py-14 sm:py-20 text-center">
-          <h1 className="font-display font-bold text-ink text-4xl sm:text-5xl md:text-6xl leading-tight mb-4">
+          <h1 className="font-display font-bold text-ink text-4xl sm:text-5xl md:text-6xl leading-tight mb-4 animate-fade-up">
             מצא את המתכון המושלם שלך
           </h1>
-          <p className="text-ink-soft text-lg sm:text-xl mb-8">
-            בואו נבשל משהו טעים היום 🍽️
+          <p className="text-ink-soft text-lg sm:text-xl mb-8 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+            בואו נבשל משהו טעים היום
           </p>
           <div className="relative max-w-xl mx-auto">
             <span
-              className="absolute top-1/2 -translate-y-1/2 right-5 text-xl pointer-events-none"
+              className="absolute top-1/2 -translate-y-1/2 right-5 text-lg pointer-events-none text-ink-soft"
               aria-hidden="true"
             >
-              {useAISearch ? '🤖' : '🔍'}
+              {useAISearch ? '⚡' : '✍️'}
             </span>
             <input
               type="search"
@@ -182,7 +182,7 @@ export default function HomePage({ onSelectRecipe }) {
           </div>
         ) : (
           <div className="text-center py-20">
-            <div className="text-6xl mb-4" aria-hidden="true">🍝</div>
+            <div className="text-7xl mb-4 opacity-40" aria-hidden="true">🍝</div>
             <h2 className="font-display text-2xl text-ink mb-2">לא נמצאו מתכונים</h2>
             <p className="text-ink-soft">נסו לשנות את הסינון או לאפס אותו</p>
           </div>
