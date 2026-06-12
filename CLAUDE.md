@@ -334,3 +334,22 @@ EOF
 - For auth: verify `JWT_SECRET` is set in `.env`. Token validation errors mean the secret is missing/wrong or token is expired (7 days).
 - Verify [recipe-app/data/recipes.json](recipe-app/data/recipes.json) and [recipe-app/data/users.json](recipe-app/data/users.json) exist and are valid JSON (see "recipes.json corrupted" in Solved problems log if you see parsing errors).
 - For AI features, check that `ANTHROPIC_API_KEY` is set in `.env` and that the Anthropic account has sufficient credits.
+
+## Deployment (Render)
+
+**Live:** https://cookingbook-bf50.onrender.com  
+**Setup:** Connected to `main` branch on GitHub. Render runs build & deploy automatically on push.
+
+**Key files:**
+- `.nvmrc` — Specifies Node.js 20 (Render reads this to pick the runtime version)
+- `render.json` — Alternative deployment config (not currently used, but available for future reference)
+- `recipe-app/server/index.js` — Serves both API and static files from `dist/`
+- `recipe-app/package.json` — Has `"start": "node server/index.js"` script
+
+**Environment variables (set in Render dashboard):**
+- `ANTHROPIC_API_KEY` — Required for AI features (search, chat)
+- `JWT_SECRET` — Secret for JWT signing (optional, defaults to dev value)
+
+**Keep-Alive:** UptimeRobot pings the app every 5 minutes to prevent Render free tier from spinning down.
+
+**Note:** Render free tier data persists across deployments (recipes.json and users.json are safe), but the instance sleeps after 15 min of inactivity if not pinged. Upgrading to paid tier makes it always-on.

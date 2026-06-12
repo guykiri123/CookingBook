@@ -87,6 +87,35 @@ npm run lint     # Run ESLint
 
 ---
 
+## 🚀 Deployment (Render)
+
+**Live Demo:** https://cookingbook-bf50.onrender.com
+
+### Deploy Your Own
+
+1. **Fork the repo** on GitHub
+2. **Create Render account** at https://render.com (connect GitHub)
+3. **New Web Service:**
+   - Choose your forked repo
+   - Set **Branch:** `main`
+   - Set **Root Directory:** `recipe-app`
+   - Set **Build Command:** `cd recipe-app && npm install && npm run build`
+   - Set **Start Command:** `cd recipe-app && npm start`
+
+4. **Add Environment Variables** (in Render dashboard):
+   - `ANTHROPIC_API_KEY=sk-ant-api03-...` (from https://console.anthropic.com)
+   - `JWT_SECRET=your-secret-key-change-in-production`
+
+5. **Keep-Alive (Optional):** Use [UptimeRobot](https://uptimerobot.com) (free) to ping your service every 5 minutes so it never sleeps
+
+### Troubleshooting Deployment
+
+- **Build fails with "Node.js 18 not supported"** — Render reads `.nvmrc` in repo root. Ensure it contains `20` or higher.
+- **"Missing script: start"** — Ensure `package.json` in `recipe-app/` has `"start": "node server/index.js"`
+- **AI features return 500** — Check `ANTHROPIC_API_KEY` is set in Render environment variables and account has credits
+
+---
+
 ## ⚙️ Configuration
 
 ### `.env` פרמטרים
