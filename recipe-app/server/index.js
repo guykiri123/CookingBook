@@ -740,6 +740,26 @@ app.delete('/api/recipes/:id/reviews/:reviewId', async (req, res) => {
 });
 
 // AI endpoints
+// Fetch the auto-generated image for a recipe name WITHOUT saving it, so the
+// client can let the user crop it before the recipe is created.
+app.post('/api/ai/preview-image', async (req, res) => {
+  try {
+    const user = requireAuth(req, res);
+    if (!user) return;
+
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Missing recipe name' });
+    }
+
+    const image = await fetchRecipeImage(name.trim());
+    res.json({ image: image || null });
+  } catch (err) {
+    console.error('Preview image error:', err);
+    res.status(500).json({ error: 'Failed to fetch preview image' });
+  }
+});
+
 app.post('/api/ai/search', async (req, res) => {
   try {
     const { query, recipes } = req.body;

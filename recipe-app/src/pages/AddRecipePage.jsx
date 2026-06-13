@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRecipes } from '../context/recipesContext';
 import { useAuth } from '../context/authContext';
-import { fileToScaledDataUrl } from '../utils/image';
+import { fileToDataUrl } from '../utils/image';
+import ImageCropper from '../components/ImageCropper';
 import { CUISINES } from '../data/cuisines';
 import { DIETARY_TAGS } from '../data/dietaryTags';
 
@@ -31,25 +32,9 @@ function Field({ label, required, children, hint }) {
 }
 
 export default function AddRecipePage({ editId, onCreated, onCancel }) {
-  const { isLoggedIn, user } = useAuth();
+  const { isLoggedIn, user, token } = useAuth();
   const { recipes, addRecipe, updateRecipe } = useRecipes();
 
-  if (!isLoggedIn) {
-    return (
-      <div className="min-h-screen bg-cream flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center" dir="rtl">
-          <h1 className="text-2xl font-display font-bold text-primary mb-4">נדרשת התחברות</h1>
-          <p className="text-ink font-sans mb-6">עליך להיות מחובר כדי להוסיף או לערוך מתכונים.</p>
-          <button
-            onClick={onCancel}
-            className="w-full bg-primary text-white font-sans font-medium py-2 rounded-lg hover:bg-primary/90 transition"
-          >
-            חזור לדף הבית
-          </button>
-        </div>
-      </div>
-    );
-  }
   const existing = editId != null ? recipes.find((r) => r.id === editId) : null;
   const isEditing = Boolean(existing);
 
@@ -78,9 +63,33 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
   );
   const [tags, setTags] = useState(() => existing?.tags ?? []);
   const [image, setImage] = useState(existing?.image ?? null);
+  // Raw (un-cropped) source for the crop editor when the user picks a new file.
+  const [imageSource, setImageSource] = useState(null);
+  const [imageChanged, setImageChanged] = useState(false);
   const [imageError, setImageError] = useState('');
   const [errors, setErrors] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
+  // When set, the crop modal is open. Holds { src, recipe } — the image to crop
+  // and the validated recipe payload waiting to be saved after cropping.
+  const [cropState, setCropState] = useState(null);
 
+  // Guard kept below all hooks so hook order stays stable across renders.
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-cream flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center" dir="rtl">
+          <h1 className="text-2xl font-display font-bold text-primary mb-4">נדרשת התחברות</h1>
+          <p className="text-ink font-sans mb-6">עליך להיות מחובר כדי להוסיף או לערוך מתכונים.</p>
+          <button
+            onClick={onCancel}
+            className="w-full bg-primary text-white font-sans font-medium py-2 rounded-lg hover:bg-primary/90 transition"
+          >
+            חזור לדף הבית
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const setField = (key) => (e) => setForm((p) => ({ ...p, [key]: e.target.value }));
 
@@ -104,13 +113,21 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
     setImageError('');
     if (!file) {
       setImage(null);
+      setImageSource(null);
+      setImageChanged(false);
       return;
     }
     try {
-      const dataUrl = await fileToScaledDataUrl(file);
+      // Keep the raw image as the crop source; it gets cropped + downscaled on
+      // submit. The same data URL doubles as the form preview.
+      const dataUrl = await fileToDataUrl(file);
       setImage(dataUrl);
+      setImageSource(dataUrl);
+      setImageChanged(true);
     } catch (err) {
       setImage(null);
+      setImageSource(null);
+      setImageChanged(false);
       setImageError(err.message || 'לא ניתן לטעון את התמונה');
     }
   };
@@ -131,7 +148,29 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
     return { errs, validIngredients, validInstructions };
   };
 
-  const handleSubmit = (e) => {
+  // Persist the recipe with its final (already-cropped) image, or null.
+  const finalizeSave = async (recipe, finalImage) => {
+    setSubmitting(true);
+    try {
+      const payload = { ...recipe, image: finalImage || null };
+      if (isEditing) {
+        await updateRecipe(editId, payload);
+        onCreated(editId);
+      } else {
+        const newId = await addRecipe(payload);
+        onCreated(newId);
+      }
+    } catch {
+      setSubmitting(false);
+      setCropState(null);
+      setErrors([
+        'שמירת המתכון נכשלה — ייתכן שאחסון הדפדפן מלא. נסו תמונה קטנה יותר או הסירו מתכונים קיימים.',
+      ]);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const { errs, validIngredients, validInstructions } = validate();
     if (errs.length > 0) {
@@ -152,7 +191,6 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
       servings: Number(form.servings),
       tips: form.tips.trim(),
       tags,
-      image: image || null,
       ingredients: validIngredients.map((i) => ({
         name: i.name.trim(),
         amount: i.amount === '' ? 1 : Number(i.amount),
@@ -165,20 +203,42 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
       recipe.author = form.author.trim();
     }
 
-    try {
-      if (isEditing) {
-        updateRecipe(editId, recipe);
-        onCreated(editId);
-      } else {
-        const newId = addRecipe(recipe);
-        onCreated(newId);
-      }
-    } catch {
-      setErrors([
-        'שמירת המתכון נכשלה — ייתכן שאחסון הדפדפן מלא. נסו תמונה קטנה יותר או הסירו מתכונים קיימים.',
-      ]);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Decide which image (if any) the user should crop before saving:
+    // 1. A freshly uploaded file → crop it.
+    // 2. No image at all → ask the server for the auto Unsplash image and, if
+    //    one comes back, crop that. If none (no key / no match), save without.
+    // 3. Editing with an unchanged existing image → keep it as-is.
+    if (imageChanged && imageSource) {
+      setCropState({ src: imageSource, recipe });
+      return;
     }
+
+    if (!image) {
+      setSubmitting(true);
+      try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers.Authorization = `Bearer ${token}`;
+        const res = await fetch('/api/ai/preview-image', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ name: recipe.name }),
+        });
+        const data = await res.json();
+        setSubmitting(false);
+        if (data.image) {
+          setCropState({ src: data.image, recipe });
+          return;
+        }
+      } catch {
+        setSubmitting(false);
+      }
+      // No auto image available — save without one.
+      finalizeSave(recipe, null);
+      return;
+    }
+
+    // Editing, existing image untouched.
+    finalizeSave(recipe, image);
   };
 
   return (
@@ -246,7 +306,10 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
             />
           </Field>
 
-          <Field label="תמונת המתכון" hint="לא חובה. התמונה תוקטן אוטומטית לשמירה מקומית.">
+          <Field
+            label="תמונת המתכון"
+            hint="לא חובה. לאחר הפרסום תוכלו למקם ולחתוך את התמונה. אם לא תעלו תמונה — נחפש עבורכם תמונה אוטומטית שגם אותה אפשר יהיה לחתוך."
+          >
             <input
               type="file"
               accept="image/*"
@@ -455,18 +518,36 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
           <button
             type="button"
             onClick={onCancel}
-            className="px-6 py-3 rounded-full font-semibold border-2 border-accent/50 text-ink hover:bg-cream transition-colors"
+            disabled={submitting}
+            className="px-6 py-3 rounded-full font-semibold border-2 border-accent/50 text-ink hover:bg-cream transition-colors disabled:opacity-50"
           >
             ביטול
           </button>
           <button
             type="submit"
-            className="bg-primary text-cream font-semibold px-8 py-3 rounded-full hover:bg-primary-dark active:scale-[0.98] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
+            disabled={submitting}
+            className="bg-primary text-cream font-semibold px-8 py-3 rounded-full hover:bg-primary-dark active:scale-[0.98] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 disabled:opacity-50"
           >
-            {isEditing ? 'שמור שינויים' : 'פרסם מתכון'}
+            {submitting
+              ? 'מעבד…'
+              : isEditing
+                ? 'שמור שינויים'
+                : 'פרסם מתכון'}
           </button>
         </div>
       </form>
+
+      {cropState && (
+        <ImageCropper
+          src={cropState.src}
+          onConfirm={(croppedDataUrl) => {
+            const recipe = cropState.recipe;
+            setCropState(null);
+            finalizeSave(recipe, croppedDataUrl);
+          }}
+          onCancel={() => setCropState(null)}
+        />
+      )}
     </div>
   );
 }
