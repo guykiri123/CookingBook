@@ -106,6 +106,7 @@ Check this before debugging — common issues and their fixes:
 - `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`
 - `GET/POST/PUT/DELETE /api/recipes` (CRUD requires JWT, writes to MongoDB + JSON backup)
 - `POST/DELETE /api/recipes/:id/reviews` (both require JWT; POST sets `author` from the token — never the body; DELETE allows admin or the review's own author)
+- `GET/PUT /api/favorites` (JWT; PUT replaces the list, used for guest→account merge on login) + `POST/DELETE /api/favorites/:recipeId` (JWT; atomic `$addToSet`/`$pull` used for per-item toggle)
 - `POST /api/ai/search`, `POST /api/ai/chat`
 
 **Sync scripts:**
@@ -113,7 +114,7 @@ Check this before debugging — common issues and their fixes:
 - [migrate-data.js](recipe-app/migrate-data.js) — one-time migration from JSON to MongoDB (already ran, keep for reference)
 
 **MongoDB Collections:**
-- `users` — `id`, `username`, `email`, `passwordHash`, `role`, `createdAt`
+- `users` — `id`, `username`, `email`, `passwordHash`, `role`, `createdAt`, `favorites[]` (recipe IDs)
 - `recipes` — `id`, `name`, `description`, `difficulty`, `cuisine`, `dietType`, `prepTime`, `servings`, `cookTime`, `tips`, `image`, `author`, `authorId`, `createdAt`, `averageRating`, `ingredients[]`, `instructions[]`, `reviews[]`
 - `reviews` (nested in recipes) — `id`, `author`, `rating`, `text`, `createdAt`
 
@@ -130,7 +131,7 @@ Check this before debugging — common issues and their fixes:
 | `MONGODB_URI` | ✅ | MongoDB Atlas connection string |
 | `ANTHROPIC_API_KEY` | ✅ | AI search + chat |
 | `UNSPLASH_ACCESS_KEY` | ⚠️ | Auto-generate recipe images |
-| `JWT_SECRET` | ❌ | Auth token signing (default: dev value) |
+| `JWT_SECRET` | ⚠️ | Auth token signing. Defaults to a dev value if unset — **set a fixed value in Render**, otherwise every restart/redeploy invalidates all tokens and logs everyone out (breaking favorites/reviews until re-login). |
 
 ---
 
@@ -138,8 +139,8 @@ Check this before debugging — common issues and their fixes:
 
 Three Context providers:
 - **AuthProvider:** login state, token, `useAuth()` hook
-- **RecipesProvider:** recipe list, `useRecipes()` for CRUD
-- **FavoritesProvider:** favorites in localStorage, `useFavorites()` hook
+- **RecipesProvider:** recipe list, `useRecipes()` for CRUD. Also exposes `applyLocalUpdate(id, updates)` for local-only state patches (used by reviews, which persist via their own endpoints).
+- **FavoritesProvider:** `useFavorites()` hook. Account-synced when logged in (MongoDB via `/api/favorites`), falls back to `localStorage` for guests, and merges guest favorites into the account on login. **Gotcha:** restarting Express is required to pick up favorites/review endpoint changes — a stale dev server returns the SPA fallback for unknown `/api/*` routes, so writes silently no-op.
 
 ---
 
@@ -248,7 +249,7 @@ app.post('/api/recipes', async (req, res) => {
 - `MONGODB_URI` — **required** — MongoDB Atlas connection string (e.g., `mongodb+srv://user:pass@cluster.mongodb.net/cookingbook`)
 - `ANTHROPIC_API_KEY` — required for AI features
 - `UNSPLASH_ACCESS_KEY` — optional, for auto-generated recipe images
-- `JWT_SECRET` — optional, defaults to dev value
+- `JWT_SECRET` — **recommended**: set a fixed value, or every redeploy/restart invalidates all tokens (logs everyone out)
 
 **MongoDB setup on Render:**
 1. Create cluster on MongoDB Atlas (free tier: 512MB)
