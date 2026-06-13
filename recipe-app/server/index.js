@@ -28,7 +28,8 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   passwordHash: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
-  role: { type: String, enum: ['user', 'admin'], default: 'user' }
+  role: { type: String, enum: ['user', 'admin'], default: 'user' },
+  favorites: { type: [Number], default: [] }
 });
 
 const reviewSchema = new mongoose.Schema({
@@ -301,6 +302,95 @@ app.get('/api/auth/me', (req, res) => {
   res.json(user);
 });
 
+// Favorites endpoints (per-account, synced across devices)
+app.get('/api/favorites', async (req, res) => {
+  try {
+    const authUser = requireAuth(req, res);
+    if (!authUser) return;
+
+    const user = await User.findOne({ id: authUser.id });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    res.json({ favorites: user.favorites || [] });
+  } catch (err) {
+    console.error('Error fetching favorites:', err);
+    res.status(500).json({ error: 'Failed to fetch favorites' });
+  }
+});
+
+app.put('/api/favorites', async (req, res) => {
+  try {
+    const authUser = requireAuth(req, res);
+    if (!authUser) return;
+
+    const { favorites } = req.body;
+    if (!Array.isArray(favorites) || !favorites.every((id) => Number.isInteger(id))) {
+      return res.status(400).json({ error: 'favorites must be an array of recipe IDs' });
+    }
+
+    const user = await User.findOne({ id: authUser.id });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // De-duplicate while preserving order.
+    user.favorites = [...new Set(favorites)];
+    await user.save();
+    await syncToJSON();
+
+    res.json({ favorites: user.favorites });
+  } catch (err) {
+    console.error('Error updating favorites:', err);
+    res.status(500).json({ error: 'Failed to update favorites' });
+  }
+});
+
+// Atomic single-recipe toggle — never overwrites the whole list, so a stale
+// client can't wipe favorites saved on another device.
+app.post('/api/favorites/:recipeId', async (req, res) => {
+  try {
+    const authUser = requireAuth(req, res);
+    if (!authUser) return;
+
+    const recipeId = parseInt(req.params.recipeId);
+    if (Number.isNaN(recipeId)) return res.status(400).json({ error: 'Invalid recipe ID' });
+
+    const updated = await User.findOneAndUpdate(
+      { id: authUser.id },
+      { $addToSet: { favorites: recipeId } },
+      { new: true }
+    );
+    if (!updated) return res.status(404).json({ error: 'User not found' });
+
+    await syncToJSON();
+    res.json({ favorites: updated.favorites });
+  } catch (err) {
+    console.error('Error adding favorite:', err);
+    res.status(500).json({ error: 'Failed to add favorite' });
+  }
+});
+
+app.delete('/api/favorites/:recipeId', async (req, res) => {
+  try {
+    const authUser = requireAuth(req, res);
+    if (!authUser) return;
+
+    const recipeId = parseInt(req.params.recipeId);
+    if (Number.isNaN(recipeId)) return res.status(400).json({ error: 'Invalid recipe ID' });
+
+    const updated = await User.findOneAndUpdate(
+      { id: authUser.id },
+      { $pull: { favorites: recipeId } },
+      { new: true }
+    );
+    if (!updated) return res.status(404).json({ error: 'User not found' });
+
+    await syncToJSON();
+    res.json({ favorites: updated.favorites });
+  } catch (err) {
+    console.error('Error removing favorite:', err);
+    res.status(500).json({ error: 'Failed to remove favorite' });
+  }
+});
+
 // Admin endpoints
 app.get('/api/admin/users', async (req, res) => {
   try {
@@ -570,6 +660,9 @@ app.delete('/api/recipes/:id', async (req, res) => {
 // Reviews endpoints
 app.post('/api/recipes/:id/reviews', async (req, res) => {
   try {
+    const user = requireAuth(req, res);
+    if (!user) return;
+
     const id = parseInt(req.params.id);
     const recipe = await Recipe.findOne({ id });
 
@@ -577,19 +670,21 @@ app.post('/api/recipes/:id/reviews', async (req, res) => {
       return res.status(404).json({ error: 'Recipe not found' });
     }
 
-    const { author, rating, text } = req.body;
+    const { rating, text } = req.body;
 
-    if (!author || !rating || !text) {
-      return res.status(400).json({ error: 'Missing required fields: author, rating, text' });
+    if (!rating || !text) {
+      return res.status(400).json({ error: 'Missing required fields: rating, text' });
     }
 
     if (rating < 1 || rating > 5) {
       return res.status(400).json({ error: 'Rating must be between 1 and 5' });
     }
 
+    // Author comes from the authenticated user — never from the request body,
+    // so reviews can't be anonymous or forged.
     const newReview = {
       id: `r${Date.now()}`,
-      author,
+      author: user.username,
       rating: parseInt(rating),
       text,
       createdAt: new Date().toISOString(),
@@ -609,6 +704,9 @@ app.post('/api/recipes/:id/reviews', async (req, res) => {
 
 app.delete('/api/recipes/:id/reviews/:reviewId', async (req, res) => {
   try {
+    const user = requireAuth(req, res);
+    if (!user) return;
+
     const id = parseInt(req.params.id);
     const reviewId = req.params.reviewId;
     const recipe = await Recipe.findOne({ id });
@@ -620,6 +718,12 @@ app.delete('/api/recipes/:id/reviews/:reviewId', async (req, res) => {
     const reviewIndex = recipe.reviews.findIndex(r => r.id === reviewId);
     if (reviewIndex === -1) {
       return res.status(404).json({ error: 'Review not found' });
+    }
+
+    // Only an admin or the review's own author may delete it.
+    const review = recipe.reviews[reviewIndex];
+    if (user.role !== 'admin' && review.author !== user.username) {
+      return res.status(403).json({ error: 'Forbidden' });
     }
 
     recipe.reviews.splice(reviewIndex, 1);

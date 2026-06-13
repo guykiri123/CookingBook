@@ -7,7 +7,12 @@
     "passwordHash": "$2b$10$kN0lm2VRzguy42102hzpZ.czAgTdnuL7NUMdCMkL1tdRqqMdnSX.e",
     "createdAt": "2026-06-07T14:17:55.230Z",
     "role": "admin",
-    "__v": 0
+    "__v": 2,
+    "favorites": [
+      4,
+      8,
+      2
+    ]
   },
   {
     "_id": "6a2c83700965c3b49419adb8",

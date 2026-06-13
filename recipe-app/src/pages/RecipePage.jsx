@@ -3,6 +3,7 @@ import { useFavorites } from '../context/favoritesContext';
 import { useRecipes } from '../context/recipesContext';
 import { useAuth } from '../context/authContext';
 import { formatHebrewDate } from '../utils/date';
+import { formatPrepTime } from '../utils/prepTime';
 import DietaryBadges from '../components/DietaryBadges';
 import RatingDisplay from '../components/RatingDisplay';
 import ReviewForm from '../components/ReviewForm';
@@ -18,9 +19,15 @@ function formatAmount(amount) {
   return rounded.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }
 
+const calcAverageRating = (reviews) => {
+  if (!reviews || reviews.length === 0) return 0;
+  const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
+  return Math.round((sum / reviews.length) * 10) / 10;
+};
+
 export default function RecipePage({ recipeId, onBack, onEdit }) {
-  const { user } = useAuth();
-  const { recipes, deleteRecipe, updateRecipe } = useRecipes();
+  const { user, token } = useAuth();
+  const { recipes, deleteRecipe, applyLocalUpdate } = useRecipes();
   const recipe = recipes.find((r) => r.id === recipeId);
   const [servings, setServings] = useState(recipe?.servings || 4);
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
@@ -41,7 +48,10 @@ export default function RecipePage({ recipeId, onBack, onEdit }) {
     try {
       const res = await fetch(`/api/recipes/${recipe.id}/reviews`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify(reviewData),
       });
 
@@ -50,11 +60,12 @@ export default function RecipePage({ recipeId, onBack, onEdit }) {
         throw new Error(err.error || 'Failed to add review');
       }
 
-      await updateRecipe(recipe.id, {
-        reviews: [...(recipe.reviews || []), await res.json()],
+      const newReview = await res.json();
+      const updatedReviews = [...(recipe.reviews || []), newReview];
+      applyLocalUpdate(recipe.id, {
+        reviews: updatedReviews,
+        averageRating: calcAverageRating(updatedReviews),
       });
-    } catch (err) {
-      throw err;
     } finally {
       setIsSubmittingReview(false);
     }
@@ -65,6 +76,7 @@ export default function RecipePage({ recipeId, onBack, onEdit }) {
     try {
       const res = await fetch(`/api/recipes/${recipe.id}/reviews/${reviewId}`, {
         method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
       if (!res.ok) {
@@ -72,7 +84,10 @@ export default function RecipePage({ recipeId, onBack, onEdit }) {
       }
 
       const updatedReviews = recipe.reviews.filter((r) => r.id !== reviewId);
-      await updateRecipe(recipe.id, { reviews: updatedReviews });
+      applyLocalUpdate(recipe.id, {
+        reviews: updatedReviews,
+        averageRating: calcAverageRating(updatedReviews),
+      });
     } catch (err) {
       console.error('Error deleting review:', err);
     } finally {
@@ -170,7 +185,7 @@ export default function RecipePage({ recipeId, onBack, onEdit }) {
               <span className="mr-1">{recipe.difficulty}</span>
             </span>
             <span>🏠 {recipe.cuisine}</span>
-            <span>⏱️ {recipe.cookTime} דקות</span>
+            <span>⏱️ {formatPrepTime(recipe.prepTime)}</span>
             <span>🍽️ {recipe.dietType}</span>
             <div className="w-full min-w-full">
               <RatingDisplay averageRating={recipe.averageRating} reviewCount={recipe.reviews?.length || 0} />
@@ -287,13 +302,22 @@ export default function RecipePage({ recipeId, onBack, onEdit }) {
               <span aria-hidden="true">⭐</span> דירוגים והערות
             </h2>
 
-            {/* Review Form */}
+            {/* Review Form — only for logged-in users (no anonymous reviews) */}
             <div className="mb-10">
-              <ReviewForm
-                recipeId={recipe.id}
-                onSubmit={handleAddReview}
-                isLoading={isSubmittingReview}
-              />
+              {user ? (
+                <ReviewForm
+                  recipeId={recipe.id}
+                  username={user.username}
+                  onSubmit={handleAddReview}
+                  isLoading={isSubmittingReview}
+                />
+              ) : (
+                <div className="bg-cream rounded-2xl p-6 border border-accent/20 text-center">
+                  <p className="text-ink-soft">
+                    <span aria-hidden="true">🔒</span> כדי להוסיף דירוג צריך להיות מחובר.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Reviews List */}
@@ -303,7 +327,7 @@ export default function RecipePage({ recipeId, onBack, onEdit }) {
               </h3>
               <ReviewsList
                 reviews={recipe.reviews}
-                onDeleteReview={handleDeleteReview}
+                onDeleteReview={user?.role === 'admin' ? handleDeleteReview : undefined}
                 isDeleting={isDeletingReview}
               />
             </div>

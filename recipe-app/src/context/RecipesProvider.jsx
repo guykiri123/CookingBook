@@ -63,6 +63,12 @@ export function RecipesProvider({ children }) {
     }
   }, [token]);
 
+  // Local-only state patch (no server call). Used for reviews, which persist
+  // through their own endpoints, so we just reflect the change in the UI.
+  const applyLocalUpdate = useCallback((id, updates) => {
+    setRecipes((prev) => prev.map((r) => (r.id === id ? { ...r, ...updates } : r)));
+  }, []);
+
   const deleteRecipe = useCallback(async (id) => {
     try {
       const headers = {};
@@ -75,8 +81,8 @@ export function RecipesProvider({ children }) {
   }, [token]);
 
   const value = useMemo(
-    () => ({ recipes, addRecipe, updateRecipe, deleteRecipe, loading }),
-    [recipes, addRecipe, updateRecipe, deleteRecipe, loading]
+    () => ({ recipes, addRecipe, updateRecipe, deleteRecipe, applyLocalUpdate, loading }),
+    [recipes, addRecipe, updateRecipe, deleteRecipe, applyLocalUpdate, loading]
   );
 
   return <RecipesContext.Provider value={value}>{children}</RecipesContext.Provider>;

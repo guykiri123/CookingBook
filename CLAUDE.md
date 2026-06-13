@@ -86,7 +86,8 @@ Check this before debugging — common issues and their fixes:
 **Key concepts:**
 - **Ingredient scaling:** RecipePage multiplies amounts by `currentServings / recipe.servings`. Special case: `'לטעם'` ("to taste") never scales.
 - **Nutrition:** NutritionFacts calculates from ingredients via `calculateRecipeNutrition()` in [nutritionDatabase.js](recipe-app/src/data/nutritionDatabase.js).
-- **Reviews:** Stored in recipe.reviews[]. Average rating recalculated on each change.
+- **Reviews:** Stored in recipe.reviews[]. Average rating recalculated on each change. POST writes the review server-side; the client then updates local context state via `applyLocalUpdate()` (RecipesProvider) — it does **not** re-PUT the whole recipe (that path 403'd for non-author reviewers).
+- **Prep/cook time display:** The time shown on cards and the recipe page is derived from the `prepTime` range (`'פחות מ-30'` | `'30-60'` | `'יותר משעה'`) via `formatPrepTime()` in [src/utils/prepTime.js](recipe-app/src/utils/prepTime.js), falling back to `'30-60'`. The numeric `cookTime` field is no longer displayed (it was unreliable — hardcoded to 15 for new recipes).
 - **AI:** Two endpoints: `/api/ai/search` (Claude ranks recipes by relevance), `/api/ai/chat` (cooking advice in Hebrew).
 - **Auth:** JWT tokens in localStorage, validated on app mount. Users can be `'user'` or `'admin'`.
 - **Author ownership:** Each recipe has `authorId` (user ID) + `author` (display name). "My Recipes" filters by `authorId`. PUT/DELETE check `recipe.authorId === user.id OR user.role === 'admin'`. **Only admins can change author** (changes both name + ID).
@@ -104,7 +105,7 @@ Check this before debugging — common issues and their fixes:
 **API Endpoints:**
 - `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`
 - `GET/POST/PUT/DELETE /api/recipes` (CRUD requires JWT, writes to MongoDB + JSON backup)
-- `POST/DELETE /api/recipes/:id/reviews` (writes to MongoDB + JSON backup)
+- `POST/DELETE /api/recipes/:id/reviews` (both require JWT; POST sets `author` from the token — never the body; DELETE allows admin or the review's own author)
 - `POST /api/ai/search`, `POST /api/ai/chat`
 
 **Sync scripts:**
@@ -147,6 +148,7 @@ Three Context providers:
 - Passwords hashed with bcryptjs (10 rounds), never plain text.
 - JWT tokens expire in 7 days.
 - Recipe CRUD requires JWT; PUT/DELETE also check author ownership or admin role.
+- Reviews require JWT (no anonymous reviews): the author is taken from the token, and only an admin or the review's author can delete it. The frontend hides the review form from logged-out visitors and uses the logged-in username automatically.
 - API keys (`ANTHROPIC_API_KEY`, `UNSPLASH_ACCESS_KEY`, `JWT_SECRET`) in `.env` only, never committed.
 - Frontend: no `dangerouslySetInnerHTML`, all text as JSX nodes.
 - CSP in production (see [vite.config.js](recipe-app/vite.config.js), build-only, don't add to `<meta>`).
@@ -260,3 +262,9 @@ app.post('/api/recipes', async (req, res) => {
 - Recipes, users, reviews live in MongoDB Atlas (persistent across restarts)
 - Local JSON files are read-only backups (sync'd via `sync-from-mongo.js`)
 - Render instance is ephemeral, but MongoDB is permanent
+
+### Docker (alternative to Render buildpack)
+
+A root [Dockerfile](Dockerfile) exists for container deployment: it copies `recipe-app/`, runs `npm install` + `npm run build`, exposes `3001`, and runs `npm start` (Express serves both the API and the built `dist/`). Pass the env vars above with `-e` / `--env-file`.
+
+> ⚠️ **Node version mismatch:** the Dockerfile pins `FROM node:18-alpine`, but the project requires **Node 20+** (`package.json` `engines: ">=20.0.0"`, `.nvmrc` = `20`, Vite 8). Bump it to `node:20-alpine` before relying on the image — Node 18 will fail the build/install. There is also no `.dockerignore`, so `node_modules` and `.env` can be copied into the image unless excluded.

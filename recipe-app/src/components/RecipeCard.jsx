@@ -1,5 +1,6 @@
 import { useFavorites } from '../context/favoritesContext';
 import { formatHebrewDate } from '../utils/date';
+import { formatPrepTime } from '../utils/prepTime';
 import DietaryBadges from './DietaryBadges';
 import RatingDisplay from './RatingDisplay';
 
@@ -92,7 +93,7 @@ export default function RecipeCard({ recipe, onSelect }) {
             {DIET_ICON[recipe.dietType]} {recipe.dietType}
           </span>
           <span className="inline-flex items-center gap-1 text-xs bg-cream border border-accent/30 text-ink-soft px-2.5 py-1 rounded-full">
-            ⏱️ {recipe.cookTime} דק'
+            ⏱️ {formatPrepTime(recipe.prepTime)}
           </span>
         </div>
 

@@ -55,7 +55,7 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
 
   const [form, setForm] = useState(() => ({
     name: existing?.name ?? '',
-    author: existing?.author ?? user?.username ?? '',
+    author: existing?.author ?? '',
     description: existing?.description ?? '',
     cuisine: existing?.cuisine ?? '',
     difficulty: existing?.difficulty ?? 'קל',
@@ -161,7 +161,7 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
       instructions: validInstructions.map((s) => s.trim()),
     };
 
-    if (user?.role === 'admin') {
+    if (isEditing && user?.role === 'admin') {
       recipe.author = form.author.trim();
     }
 
@@ -219,20 +219,24 @@ export default function AddRecipePage({ editId, onCreated, onCancel }) {
         <section className="bg-white rounded-2xl border border-accent/20 shadow-sm p-6 space-y-5">
           <h2 className="font-display text-xl text-ink">פרטים כלליים</h2>
 
-          <div className="grid sm:grid-cols-2 gap-5">
-            <Field label="שם המתכון" required>
-              <input className={fieldClass} value={form.name} onChange={setField('name')} />
-            </Field>
-            {user?.role === 'admin' && (
-              <Field label="שם המעלה" hint="רק אדמינים יכולים לשנות זאת">
+          {isEditing && user?.role === 'admin' ? (
+            <div className="grid sm:grid-cols-2 gap-5">
+              <Field label="שם המתכון" required>
+                <input className={fieldClass} value={form.name} onChange={setField('name')} />
+              </Field>
+              <Field label="שם המעלה" hint="רק מנהל יכול לשנות זאת">
                 <input
                   className={fieldClass}
                   value={form.author}
                   onChange={setField('author')}
                 />
               </Field>
-            )}
-          </div>
+            </div>
+          ) : (
+            <Field label="שם המתכון" required>
+              <input className={fieldClass} value={form.name} onChange={setField('name')} />
+            </Field>
+          )}
 
           <Field label="תיאור קצר" required>
             <textarea

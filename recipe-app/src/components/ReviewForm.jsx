@@ -1,8 +1,6 @@
 import { useState } from 'react';
-import { RatingStars } from './RatingDisplay';
 
-export default function ReviewForm({ recipeId, onSubmit, isLoading = false }) {
-  const [author, setAuthor] = useState('');
+export default function ReviewForm({ recipeId, username, onSubmit, isLoading = false }) {
   const [rating, setRating] = useState(5);
   const [text, setText] = useState('');
   const [error, setError] = useState('');
@@ -10,11 +8,6 @@ export default function ReviewForm({ recipeId, onSubmit, isLoading = false }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-
-    if (!author.trim()) {
-      setError('שם חובה');
-      return;
-    }
 
     if (!text.trim()) {
       setError('כתבו משהו');
@@ -27,8 +20,7 @@ export default function ReviewForm({ recipeId, onSubmit, isLoading = false }) {
     }
 
     try {
-      await onSubmit({ author: author.trim(), rating, text: text.trim() });
-      setAuthor('');
+      await onSubmit({ rating, text: text.trim() });
       setRating(5);
       setText('');
     } catch (err) {
@@ -41,20 +33,10 @@ export default function ReviewForm({ recipeId, onSubmit, isLoading = false }) {
       <h3 className="font-display text-lg text-ink mb-4">שתפו את החוויה שלכם</h3>
 
       <div className="space-y-4">
-        {/* Author */}
-        <div>
-          <label className="block text-sm font-medium text-ink mb-2">
-            השם שלך
-          </label>
-          <input
-            type="text"
-            value={author}
-            onChange={(e) => setAuthor(e.target.value)}
-            placeholder="למשל: יוחנן"
-            maxLength={50}
-            className="w-full px-4 py-2 rounded-lg border border-accent/30 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 text-ink"
-          />
-        </div>
+        {/* Author (logged-in user, not editable) */}
+        <p className="text-sm text-ink-soft">
+          מפרסם כ־<span className="font-semibold text-ink">{username}</span>
+        </p>
 
         {/* Rating */}
         <div>
