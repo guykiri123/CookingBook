@@ -121,7 +121,7 @@ Check this before debugging — common issues and their fixes:
 - [data/recipes.json](recipe-app/data/recipes.json) — synced from MongoDB, **NOT** source of truth
 - [data/users.json](recipe-app/data/users.json) — synced from MongoDB, **NOT** source of truth
 
-> **Path gotcha:** the two sync paths differ. `sync-from-mongo.js` (run from `recipe-app/`) writes the canonical `recipe-app/data/*.json` that the rest of the app references. The server's in-request `syncToJSON()` resolves `__dirname` to `recipe-app/server/`, so it targets `recipe-app/server/data/` — a directory that doesn't exist, so those writes fail silently (caught by its try/catch). Treat `sync-from-mongo.js --watch` as the reliable way to refresh local backups, not the server's per-request sync.
+> **Sync paths:** both writers target the canonical `recipe-app/data/*.json`. `sync-from-mongo.js` (run from `recipe-app/`) writes it directly; the server's in-request `syncToJSON()` resolves `__dirname` to `recipe-app/server/` and writes `join(__dirname, '..', 'data', ...)`. (Historically `syncToJSON()` pointed at the non-existent `recipe-app/server/data/` and failed silently — fixed 2026-06-13; before that, `--watch` was the only reliable refresh.) On Render the per-request write lands on the ephemeral disk (wiped each deploy) — harmless; MongoDB remains the source of truth.
 
 **Environment variables:**
 

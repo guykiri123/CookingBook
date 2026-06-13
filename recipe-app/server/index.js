@@ -128,8 +128,9 @@ const syncToJSON = async () => {
     const users = await User.find({}).lean();
     const recipes = await Recipe.find({}).lean();
 
-    const usersPath = join(__dirname, 'data/users.json');
-    const recipesPath = join(__dirname, 'data/recipes.json');
+    // __dirname is recipe-app/server, so the data dir is one level up.
+    const usersPath = join(__dirname, '..', 'data', 'users.json');
+    const recipesPath = join(__dirname, '..', 'data', 'recipes.json');
 
     fs.writeFileSync(usersPath, JSON.stringify(users, null, 2), 'utf8');
     fs.writeFileSync(recipesPath, JSON.stringify(recipes, null, 2), 'utf8');
@@ -356,7 +357,7 @@ app.post('/api/favorites/:recipeId', async (req, res) => {
     const updated = await User.findOneAndUpdate(
       { id: authUser.id },
       { $addToSet: { favorites: recipeId } },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!updated) return res.status(404).json({ error: 'User not found' });
 
@@ -379,7 +380,7 @@ app.delete('/api/favorites/:recipeId', async (req, res) => {
     const updated = await User.findOneAndUpdate(
       { id: authUser.id },
       { $pull: { favorites: recipeId } },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!updated) return res.status(404).json({ error: 'User not found' });
 
